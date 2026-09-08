@@ -10,7 +10,8 @@
     "web:dev": "pnpm --dir web dev",
     "web:build": "pnpm --dir web build",
     "typecheck": "pnpm --dir web typecheck",
-    "test": "pnpm --dir web test"
+    "test": "pnpm --dir web test",
+    "seed": "node scripts/seed.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4"

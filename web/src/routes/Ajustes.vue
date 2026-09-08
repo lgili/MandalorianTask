@@ -79,7 +79,7 @@ onMounted(carregaProjetos);
         <div class="border-b border-rule px-4 py-2.5"><span class="rot">Dados</span></div>
         <div class="px-4 py-3.5 text-[12.5px] leading-relaxed text-fg-muted">
           Um arquivo SQLite em
-          <code class="med rounded bg-surface-2 px-1 py-0.5 text-[11px]">%APPDATA%\Bancada\bancada.db</code>.
+          <code class="med rounded bg-surface-2 px-1 py-0.5 text-[11px]">%APPDATA%\com.lgili.bancada\</code>.
           Backup é copiar o arquivo. Fuso: <span class="med">{{ tzAtual() }}</span>.
         </div>
       </div>

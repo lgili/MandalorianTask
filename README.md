@@ -42,7 +42,7 @@ os instaladores ao Release.
 
 | O quê | Onde |
 |---|---|
-| Banco | `%APPDATA%\Bancada\bancada.db` · `~/Library/Application Support/Bancada/bancada.db` |
+| Banco | `%APPDATA%\com.lgili.bancada\bancada.db` · `~/Library/Application Support/com.lgili.bancada/bancada.db` |
 | Notas (v0.3) | pasta do seu vault Obsidian, configurável |
 | Token do Google (v0.2) | arquivo `0600` no mesmo appdata — nunca em `localStorage` |
 
