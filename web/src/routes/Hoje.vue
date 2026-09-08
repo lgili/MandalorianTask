@@ -1,188 +1,122 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useMagicKeys, whenever } from '@vueuse/core';
-import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from 'lucide-vue-next';
-import Timeline from '../components/Timeline.vue';
-import ModalEntrada from '../components/ModalEntrada.vue';
-import type { DayEntry, EntryKind } from '../lib/types';
+import { ChevronLeft, ChevronRight, Pencil } from 'lucide-vue-next';
+import EditorSessao from '../components/EditorSessao.vue';
+import type { SessionCard } from '../lib/types';
 import * as api from '../lib/db';
+import { carregaDia, diaAtual, sessoesDia, totaisDia } from '../lib/store';
 import { toast } from '../lib/toast';
-import {
-  carregaDia, carregaQuadro, cards, diaAtual, entradas, pendentes, totais,
-} from '../lib/store';
-import { addDays, dayKey, fmtHM, rotuloDia, sobrepoe } from '../lib/tempo';
-import { podeAtalho } from '../lib/teclado';
+import { addDays, dayKey, duracaoMin, fmtDur, fmtHM, hhmm, rotuloDia } from '../lib/tempo';
+import { agora, decorrido } from '../lib/relogio';
 
-const modal = ref(false);
-const editando = ref<DayEntry | null>(null);
-const sugestao = ref<{ de: number; ate: number } | null>(null);
-
+const editando = ref<SessionCard | null>(null);
 const ehHoje = computed(() => diaAtual.value === dayKey());
-const prazos = computed(() =>
-  cards.value.filter((c) => c.due_at && c.status !== 'feito')
-    .sort((a, b) => (a.due_at ?? '').localeCompare(b.due_at ?? ''))
-    .slice(0, 4));
-const emCurso = computed(() => cards.value.filter((c) => c.status === 'fazendo'));
 
-async function recarrega(): Promise<void> {
-  await Promise.all([carregaDia(), carregaQuadro()]);
-}
+const KIND = { trabalho: 'trabalho', reuniao: 'reunião', admin: 'admin' } as const;
+const COR = { trabalho: 'bg-trabalho', reuniao: 'bg-reuniao', admin: 'bg-admin' } as const;
 
-function vaiPara(delta: number): void {
-  carregaDia(addDays(diaAtual.value, delta));
-}
+const linhas = computed(() => sessoesDia.value.map((s) => ({
+  s,
+  dur: s.ended_at ? fmtDur(duracaoMin(s.started_at, s.ended_at)) : decorrido(s.started_at, agora.value),
+  aberta: !s.ended_at,
+})));
 
-function abreNovo(de?: number, ate?: number): void {
-  editando.value = null;
-  sugestao.value = de != null && ate != null ? { de, ate } : null;
-  modal.value = true;
-}
+/** Percentual de cada tipo, para a barra de proporção do dia. */
+const proporcao = computed(() => {
+  const t = totaisDia.value;
+  if (!t.total) return [];
+  return (['trabalho', 'reuniao', 'admin'] as const)
+    .filter((k) => t[k] > 0)
+    .map((k) => ({ k, pct: Math.round((t[k] / t.total) * 100), min: t[k] }));
+});
 
-function abreEdicao(e: DayEntry): void {
-  editando.value = e;
-  sugestao.value = null;
-  modal.value = true;
-}
-
-async function confirma(e: DayEntry): Promise<void> {
+async function salva(id: number, patch: { started_at: string; ended_at: string }): Promise<void> {
   try {
-    await api.setEntryConfirmed(e.id, true);
+    await api.updateSession(id, patch);
+    editando.value = null;
     await carregaDia();
-    toast.ok('Confirmado — entra no relatório');
-  } catch (err) { toast.erro(api.dbErro(err)); }
-}
-
-async function confirmaTudo(): Promise<void> {
-  if (!pendentes.value.length) return;
-  try {
-    const n = await api.confirmDay(diaAtual.value);
-    await carregaDia();
-    toast.ok(`${n} ${n === 1 ? 'bloco confirmado' : 'blocos confirmados'}`);
-  } catch (err) { toast.erro(api.dbErro(err)); }
-}
-
-async function salva(d: {
-  activity_id: number | null; started_at: string; ended_at: string;
-  kind: EntryKind; note: string | null;
-}): Promise<void> {
-  // Sobreposição avisa, nunca soma em silêncio — é a regra que mantém o número honesto.
-  const conflito = entradas.value.find(
-    (e) => e.id !== editando.value?.id && e.kind !== 'pausa' && sobrepoe(e, d));
-  if (conflito) {
-    toast.aviso(`Sobrepõe "${conflito.activity_title ?? 'bloco'}". Ajuste os horários.`);
-    return;
-  }
-  try {
-    if (editando.value) await api.updateEntry(editando.value.id, d);
-    else await api.createEntry({ ...d, source: 'manual' });
-    modal.value = false;
-    await recarrega();
-  } catch (err) { toast.erro(api.dbErro(err)); }
+  } catch (e) { toast.erro(api.dbErro(e)); }
 }
 
 async function exclui(id: number): Promise<void> {
   try {
-    await api.deleteEntry(id);
-    modal.value = false;
-    await recarrega();
-  } catch (err) { toast.erro(api.dbErro(err)); }
+    await api.deleteSession(id);
+    editando.value = null;
+    await carregaDia();
+  } catch (e) { toast.erro(api.dbErro(e)); }
 }
 
-// 'a' confirma o dia. Sem checar modificador, Cmd+A (Selecionar tudo) confirmaria
-// todos os blocos da agenda sem o usuário perceber.
-let ultimo: KeyboardEvent | null = null;
-const keys = useMagicKeys({ onEventFired: (e) => { if (e.type === 'keydown') ultimo = e; } });
-whenever(keys['a'], () => {
-  if (ultimo && podeAtalho(ultimo)) confirmaTudo();
-});
-
-onMounted(recarrega);
+onMounted(() => carregaDia());
 </script>
 
 <template>
-  <div class="grid h-full grid-cols-[minmax(0,1fr)_268px] max-[1000px]:grid-cols-[minmax(0,1fr)]">
-    <div class="flex min-w-0 flex-col overflow-hidden">
-      <div class="flex flex-none flex-wrap items-center gap-3.5 px-5 pb-3 pt-4">
-        <div class="flex items-center gap-0.5">
-          <button class="grid h-6 w-6 place-items-center rounded text-fg-subtle hover:bg-surface-2 hover:text-fg"
-                  aria-label="Dia anterior" @click="vaiPara(-1)"><ChevronLeft class="h-4 w-4" /></button>
-          <span class="whitespace-nowrap px-2 text-base font-semibold tracking-tight">
-            {{ rotuloDia(diaAtual) }}</span>
-          <button class="grid h-6 w-6 place-items-center rounded text-fg-subtle hover:bg-surface-2 hover:text-fg"
-                  aria-label="Próximo dia" @click="vaiPara(1)"><ChevronRight class="h-4 w-4" /></button>
-          <button v-if="!ehHoje" class="btn btn-sm ml-2" @click="carregaDia(dayKey())">hoje</button>
-        </div>
-
-        <div class="ml-auto flex overflow-hidden rounded-md border border-rule bg-surface shadow-card">
-          <div class="min-w-[78px] border-r border-rule px-3.5 py-1.5">
-            <span class="block font-mono text-[15px] font-semibold leading-tight tabular-nums">
-              {{ fmtHM(totais.total) }}</span>
-            <span class="rotulo">logadas</span>
-          </div>
-          <div class="min-w-[78px] border-r border-rule px-3.5 py-1.5">
-            <span class="block font-mono text-[15px] font-semibold leading-tight tabular-nums text-foco">
-              {{ fmtHM(totais.foco) }}</span>
-            <span class="rotulo">foco</span>
-          </div>
-          <div class="min-w-[78px] px-3.5 py-1.5">
-            <span class="block font-mono text-[15px] font-semibold leading-tight tabular-nums text-reuniao">
-              {{ fmtHM(totais.reuniao) }}</span>
-            <span class="rotulo">reunião</span>
-          </div>
-        </div>
-
-        <button class="btn btn-sm btn-pri" @click="abreNovo()"><Plus class="h-3.5 w-3.5" />Novo</button>
+  <div class="flex min-h-0 flex-1 flex-col">
+    <div class="flex flex-none flex-wrap items-center gap-3 px-4 pb-2.5 pt-3">
+      <div class="flex items-center gap-0.5">
+        <button class="grid h-6 w-6 place-items-center rounded text-fg-subtle hover:bg-surface-2 hover:text-fg"
+          aria-label="Dia anterior" @click="carregaDia(addDays(diaAtual, -1))">
+          <ChevronLeft class="h-4 w-4" /></button>
+        <span class="px-1.5 text-[14px] font-semibold tracking-tight">{{ rotuloDia(diaAtual) }}</span>
+        <button class="grid h-6 w-6 place-items-center rounded text-fg-subtle hover:bg-surface-2 hover:text-fg"
+          aria-label="Próximo dia" @click="carregaDia(addDays(diaAtual, 1))">
+          <ChevronRight class="h-4 w-4" /></button>
+        <button v-if="!ehHoje" class="btn ml-2" @click="carregaDia(dayKey())">hoje</button>
       </div>
 
-      <div v-if="pendentes.length"
-        class="mx-5 mb-3 flex flex-none items-center gap-3 rounded-r-md border-l-2 border-warn
-               bg-warn/10 px-3.5 py-2 text-[13px]">
-        <AlertTriangle class="h-4 w-4 flex-none text-warn" />
-        <div class="min-w-0">
-          <b>{{ pendentes.length }}</b>
-          {{ pendentes.length === 1 ? 'bloco do Google Agenda aguardando' : 'blocos do Google Agenda aguardando' }}
-          confirmação — não {{ pendentes.length === 1 ? 'entra' : 'entram' }} em relatório até você confirmar.
-        </div>
-        <button class="btn btn-sm btn-pri ml-auto" @click="confirmaTudo">Confirmar tudo · A</button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto px-5 pb-7">
-        <Timeline :entradas="entradas" :dia="diaAtual"
-                  @abrir="abreEdicao" @confirmar="confirma"
-                  @lacuna="(de, ate) => abreNovo(de, ate)" />
+      <div class="ml-auto flex items-baseline gap-1.5">
+        <span class="med text-[22px] font-semibold leading-none">{{ fmtHM(totaisDia.total) }}</span>
+        <span class="rot">registradas</span>
       </div>
     </div>
 
-    <div class="flex flex-col gap-5 overflow-y-auto border-l border-rule bg-surface px-4 pb-6 pt-4
-                max-[1000px]:hidden">
-      <div>
-        <h3 class="rotulo mb-2">Prazos</h3>
-        <p v-if="!prazos.length" class="text-[11.5px] leading-snug text-fg-subtle">
-          Nenhum prazo definido. Um card do Quadro com data aparece aqui.</p>
-        <div v-for="p in prazos" :key="p.id"
-             class="flex items-baseline gap-2 border-b border-rule py-1.5 text-[13px] last:border-b-0">
-          <span class="min-w-0 leading-snug">{{ p.title }}</span>
-          <span class="ml-auto whitespace-nowrap font-mono text-[10.5px] text-fg-subtle">
-            {{ p.due_at?.slice(0, 10) }}</span>
-        </div>
+    <!-- proporção do dia: uma barra, sem gráfico -->
+    <div v-if="proporcao.length" class="flex-none px-4 pb-3">
+      <div class="flex h-1.5 overflow-hidden rounded-full">
+        <div v-for="p in proporcao" :key="p.k" :class="COR[p.k]" :style="{ width: p.pct + '%' }"
+             :title="`${KIND[p.k]} ${fmtHM(p.min)}`" />
       </div>
-
-      <div>
-        <h3 class="rotulo mb-2">Em curso</h3>
-        <p v-if="!emCurso.length" class="text-[11.5px] leading-snug text-fg-subtle">
-          Nada em <i>Fazendo</i>. Arraste um card no Quadro.</p>
-        <div v-for="a in emCurso" :key="a.id"
-             class="grid grid-cols-[1fr_auto] items-baseline gap-2 border-b border-rule py-1.5
-                    text-[13px] last:border-b-0">
-          <span class="min-w-0 leading-snug">{{ a.title }}</span>
-          <span class="font-mono text-[10.5px] tabular-nums text-fg-subtle">{{ fmtHM(a.minutes) }}</span>
-        </div>
-        <p class="mt-2.5 text-[11.5px] leading-snug text-fg-subtle">
-          Clique numa lacuna da timeline para lançar tempo numa destas.</p>
+      <div class="mt-1.5 flex gap-4 font-mono text-[10.5px] text-fg-subtle">
+        <span v-for="p in proporcao" :key="p.k" class="flex items-center gap-1.5">
+          <i class="h-2 w-2 rounded-[2px]" :class="COR[p.k]" />
+          {{ KIND[p.k] }} {{ fmtHM(p.min) }}
+        </span>
       </div>
     </div>
 
-    <ModalEntrada :aberto="modal" :dia="diaAtual" :entrada="editando" :sugestao="sugestao"
-                  @salvar="salva" @excluir="exclui" @fechar="modal = false" />
+    <div class="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
+      <p v-if="!linhas.length" class="mt-16 text-center text-[13px] text-fg-subtle">
+        Nada registrado neste dia.<br>
+        <span class="text-[12px]">Mover um card para <b>Fazendo</b> no Quadro começa a contar.</span>
+      </p>
+
+      <div v-for="l in linhas" :key="l.s.id"
+        class="group grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-rule py-2">
+        <span class="med text-[11px] text-fg-subtle">
+          {{ hhmm(l.s.started_at) }}–{{ l.s.ended_at ? hhmm(l.s.ended_at) : '…' }}
+        </span>
+
+        <div class="flex min-w-0 items-center gap-2">
+          <span class="h-2 w-2 flex-none rounded-[2px]" :class="COR[l.s.kind]" />
+          <span class="truncate text-[13px]">{{ l.s.title }}</span>
+          <span v-if="l.s.project_code" class="med flex-none text-[10.5px] text-fg-subtle">
+            {{ l.s.project_code }}</span>
+          <span v-if="l.s.source === 'manual'" class="rot flex-none !text-[9.5px]">manual</span>
+        </div>
+
+        <div class="flex flex-none items-center gap-2">
+          <button v-if="!l.aberta"
+            class="rounded-[3px] p-1 text-fg-subtle opacity-0 transition-opacity hover:bg-surface-2
+                   hover:text-fg group-hover:opacity-100"
+            title="Corrigir horário" @click="editando = l.s">
+            <Pencil class="h-3.5 w-3.5" />
+          </button>
+          <span class="med w-[68px] text-right text-[13px] font-semibold"
+            :class="l.aberta ? 'text-vivo' : 'text-fg-muted'">{{ l.dur }}</span>
+        </div>
+      </div>
+    </div>
+
+    <EditorSessao :sessao="editando" :dia="diaAtual"
+      @salvar="salva" @excluir="exclui" @fechar="editando = null" />
   </div>
 </template>

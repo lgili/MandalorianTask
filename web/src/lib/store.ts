@@ -1,56 +1,90 @@
 // Estado compartilhado. Refs de módulo + funções exportadas, sem Pinia.
-// O dado real mora no SQLite; isto aqui é só o que a UI precisa lembrar
-// entre telas (dia selecionado, projetos carregados).
+// O dado real mora no SQLite; isto é só o que a UI precisa lembrar entre telas.
 
-import { ref, computed } from 'vue';
-import type { BoardCard, DayEntry, DayTotals, Project } from './types';
+import { computed, ref } from 'vue';
+import type { Project, SessionCard, TaskCard, TaskStatus, Totais } from './types';
 import * as api from './db';
 import { dayKey, type DayKey } from './tempo';
 import { toast } from './toast';
 
-export const diaAtual = ref<DayKey>(dayKey());
 export const projetos = ref<Project[]>([]);
-export const entradas = ref<DayEntry[]>([]);
-export const totais = ref<DayTotals>({ total: 0, foco: 0, reuniao: 0, admin: 0, pendente: 0 });
-export const cards = ref<BoardCard[]>([]);
+export const tarefas = ref<TaskCard[]>([]);
+export const rodando = ref<SessionCard | null>(null);
+export const diaAtual = ref<DayKey>(dayKey());
+export const sessoesDia = ref<SessionCard[]>([]);
+export const totaisDia = ref<Totais>({ total: 0, trabalho: 0, reuniao: 0, admin: 0 });
 export const carregando = ref(false);
 
-export const pendentes = computed(() => entradas.value.filter((e) => !e.confirmed_at));
+export const porStatus = (s: TaskStatus) => computed(() =>
+  tarefas.value.filter((t) => t.status === s));
+
+export const backlog = computed(() => tarefas.value.filter((t) => t.status === 'backlog'));
 
 export async function carregaProjetos(): Promise<void> {
   projetos.value = await api.listProjects();
 }
 
-/** Sequência da última carga pedida. Resposta atrasada de um dia antigo é descartada. */
+/**
+ * Recarrega quadro + sessão ativa juntos.
+ * São sempre lidos em par porque mover um card muda os dois — separá-los deixa
+ * a tela mostrando um card em "Fazendo" e nenhum cronômetro, ou o contrário.
+ */
+export async function carregaQuadro(): Promise<void> {
+  carregando.value = true;
+  try {
+    const [t, s] = await Promise.all([api.boardTasks(), api.sessaoAberta()]);
+    tarefas.value = t;
+    rodando.value = s;
+  } catch (e) {
+    toast.erro(api.dbErro(e));
+  } finally {
+    carregando.value = false;
+  }
+}
+
+/** Sequência da última carga pedida: resposta atrasada de um dia antigo é descartada. */
 let seqDia = 0;
 
 export async function carregaDia(key: DayKey = diaAtual.value): Promise<void> {
   const meu = ++seqDia;
   diaAtual.value = key;
-  carregando.value = true;
   try {
-    // Uma ida só, e as duas leituras do MESMO instante — antes eram dois awaits
-    // independentes, então clicar rápido em '<' deixava entradas de um dia e
-    // totais de outro.
-    const [e, t] = await Promise.all([api.entriesForDay(key), api.dayTotals(key)]);
+    const [s, t] = await Promise.all([api.sessoesDoDia(key), api.totaisDoDia(key)]);
     if (meu !== seqDia) return;
-    entradas.value = e;
-    totais.value = t;
-  } catch (err) {
-    if (meu === seqDia) toast.erro(api.dbErro(err));
-  } finally {
-    if (meu === seqDia) carregando.value = false;
+    sessoesDia.value = s;
+    totaisDia.value = t;
+  } catch (e) {
+    if (meu === seqDia) toast.erro(api.dbErro(e));
   }
 }
 
-export async function carregaQuadro(): Promise<void> {
-  carregando.value = true;
+/** Move o card e recarrega. É a operação que produz o tempo. */
+export async function move(id: number, para: TaskStatus): Promise<void> {
   try {
-    cards.value = await api.boardCards();
+    await api.moveTask(id, para);
+    await Promise.all([carregaQuadro(), carregaDia()]);
   } catch (e) {
     toast.erro(api.dbErro(e));
-  } finally {
-    carregando.value = false;
+  }
+}
+
+export async function captura(
+  titulo: string, projeto: number | null, kind: TaskCard['kind'] = 'trabalho',
+): Promise<void> {
+  try {
+    await api.capturaTarefa(titulo, projeto, kind);
+    await carregaQuadro();
+  } catch (e) {
+    toast.erro(api.dbErro(e));
+  }
+}
+
+export async function pausa(): Promise<void> {
+  try {
+    await api.pausa();
+    await Promise.all([carregaQuadro(), carregaDia()]);
+  } catch (e) {
+    toast.erro(api.dbErro(e));
   }
 }
 

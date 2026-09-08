@@ -1,5 +1,4 @@
 /** Tokens semânticos como triplas RGB, para o <alpha-value> do Tailwind funcionar.
- *  Mesmo sistema do eBOM generator — é a parte boa daquele projeto.
  *  Os valores ficam em src/style.css (:root claro, .dark escuro). */
 const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
@@ -14,11 +13,12 @@ export default {
         fg: { DEFAULT: v('fg'), muted: v('fg-muted'), subtle: v('fg-subtle') },
         rule: { DEFAULT: v('rule'), strong: v('rule-strong') },
 
-        // As duas cores que carregam o significado do app: foco x reunião.
-        foco: v('foco'),
+        // o único saturado: significa "rodando agora"
+        vivo: { DEFAULT: v('vivo'), ink: v('vivo-ink'), halo: v('vivo-halo') },
+
+        trabalho: v('trabalho'),
         reuniao: v('reuniao'),
         admin: v('admin'),
-        pausa: v('pausa'),
 
         ok: v('ok'),
         warn: v('warn'),
@@ -26,12 +26,12 @@ export default {
         'on-accent': v('on-accent'),
       },
       fontFamily: {
-        sans: ['"IBM Plex Sans"', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        sans: ['"IBM Plex Sans"', 'system-ui', 'Segoe UI', 'sans-serif'],
         mono: ['"IBM Plex Mono"', 'ui-monospace', 'Consolas', 'monospace'],
       },
       boxShadow: {
-        card: '0 1px 2px rgb(var(--shadow) / .07)',
-        pop: '0 2px 4px rgb(var(--shadow) / .06), 0 10px 28px -18px rgb(var(--shadow) / .34)',
+        card: '0 1px 2px rgb(var(--shadow) / .06)',
+        pop: '0 4px 6px -2px rgb(var(--shadow) / .08), 0 12px 28px -12px rgb(var(--shadow) / .22)',
       },
     },
   },

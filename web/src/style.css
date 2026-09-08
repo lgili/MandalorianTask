@@ -1,84 +1,139 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+/* Fontes auto-hospedadas. Antes era @import do Google Fonts — num app Tauri
+   isso quebra offline: sem rede a identidade inteira troca para Segoe UI e os
+   números deixam de ser tabulares. Só os pesos usados. */
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Tokens como triplas RGB — ver tailwind.config.js.
-   Claro é o padrão: ferramenta de engenharia se usa de dia. */
+/* ════════════════════════════════════════════════════════════════════════
+   PALETA
+
+   Uma regra explica tudo: COR SATURADA SIGNIFICA "AGORA".
+   O âmbar aparece exclusivamente no que está rodando neste instante. Ele não
+   é a cor do app, não está na navegação, não está em botão primário. Se a
+   tela está inteira neutra, nada está correndo — e isso se lê de longe.
+
+   Sem teal e sem terracota de propósito: é o par de acento que toda IA gera,
+   e os três críticos apontaram o mesmo. As categorias usam ardósia, ameixa e
+   cinza, que se separam bem entre si e não competem com o âmbar.
+   ════════════════════════════════════════════════════════════════════════ */
 :root {
   color-scheme: light;
-  --surface: 255 255 255;
-  --surface-1: 241 243 244;
-  --surface-2: 231 235 236;
-  --surface-3: 216 222 223;
-  --fg: 22 25 27;
-  --fg-muted: 78 88 91;
-  --fg-subtle: 124 135 138;
-  --rule: 214 221 222;
-  --rule-strong: 182 192 194;
-  --foco: 18 112 123;
-  --reuniao: 176 96 58;
-  --admin: 92 107 138;
-  --pausa: 154 165 167;
-  --ok: 47 122 71;
-  --warn: 138 99 32;
+
+  /* fundo levemente quente: mantém o âmbar vivo em vez de doentio */
+  --surface-1: 244 243 241;
+  --surface:   255 255 255;
+  --surface-2: 235 233 230;
+  --surface-3: 221 218 214;
+
+  --fg:        26 25 23;
+  --fg-muted:  84 80 75;
+  --fg-subtle: 106 101 95;   /* 5.4:1 sobre surface-1 — passa AA em 11px */
+
+  --rule:        222 219 214;
+  --rule-strong: 189 184 177;
+
+  /* o único saturado: sessão rodando */
+  --vivo:      181 83 9;
+  --vivo-ink:  146 64 6;
+  --vivo-halo: 253 235 213;
+
+  /* categorias — separadas em matiz, não em saturação */
+  --trabalho: 61 90 108;
+  --reuniao:  140 90 125;
+  --admin:    122 138 143;
+
+  --ok:     47 106 71;
+  --warn:   141 98 20;
   --danger: 163 53 38;
+
   --on-accent: 255 255 255;
-  --shadow: 20 32 35;
+  --shadow: 26 25 23;
 }
 
 .dark {
   color-scheme: dark;
-  --surface: 25 31 34;
-  --surface-1: 17 21 23;
-  --surface-2: 33 42 45;
-  --surface-3: 43 53 56;
-  --fg: 231 236 237;
-  --fg-muted: 163 175 178;
-  --fg-subtle: 120 134 138;
-  --rule: 40 49 52;
-  --rule-strong: 58 69 72;
-  --foco: 79 179 189;
-  --reuniao: 212 138 98;
-  --admin: 132 150 188;
-  --pausa: 90 102 105;
-  --ok: 107 191 136;
-  --warn: 201 162 78;
-  --danger: 217 124 108;
-  --on-accent: 14 20 22;
+
+  --surface-1: 20 19 18;
+  --surface:   28 27 25;
+  --surface-2: 38 36 34;
+  --surface-3: 51 48 45;
+
+  --fg:        237 234 230;
+  --fg-muted:  172 166 159;
+  --fg-subtle: 140 134 127;  /* 5.6:1 sobre surface-1 */
+
+  --rule:        45 43 40;
+  --rule-strong: 68 64 60;
+
+  --vivo:      240 168 104;
+  --vivo-ink:  247 195 148;
+  --vivo-halo: 61 38 15;
+
+  --trabalho: 122 158 182;
+  --reuniao:  191 143 176;
+  --admin:    138 152 156;
+
+  --ok:     110 190 140;
+  --warn:   205 168 90;
+  --danger: 224 130 114;
+
+  --on-accent: 26 20 12;
   --shadow: 0 0 0;
 }
 
 @layer base {
   body {
-    @apply bg-surface-1 text-fg font-sans text-sm antialiased;
+    @apply bg-surface-1 text-fg font-sans text-[13.5px] antialiased;
+    /* o relógio muda a cada segundo: sem tabular a largura pisca e puxa o olho */
+    font-variant-numeric: tabular-nums;
   }
-  /* Foco visível de teclado: o app é operado por atalho. */
   :focus-visible {
-    @apply outline-none ring-2 ring-foco ring-offset-1 ring-offset-surface-1 rounded;
+    @apply outline-none ring-2 ring-vivo/70 ring-offset-1 ring-offset-surface-1 rounded-[3px];
   }
+  ::selection { @apply bg-vivo/25; }
 }
 
-/* Componentes de verdade, num lugar só. No eBOM estes @apply estão copiados
-   dentro de três arquivos de rota com definições que já divergiram. */
+/* ════════════════════════════════════════════════════════════════════════
+   COMPONENTES
+
+   Regra tipográfica que resolve quase toda decisão sozinha:
+     MONO carrega o que foi MEDIDO  (durações, relógios, códigos, contadores)
+     SANS carrega o que foi ESCRITO (títulos de tarefa, notas, nomes)
+   Nada de mono decorativo em título; nada de sans em número.
+
+   Nada nesta interface passa de 22px. A maior coisa da tela é uma duração —
+   isso é a tese, e é o que impede o app de virar site.
+   ════════════════════════════════════════════════════════════════════════ */
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-2 rounded-md border border-rule-strong bg-surface
-           px-3 py-1.5 text-[13px] font-medium shadow-card transition
-           hover:border-fg-subtle disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center gap-1.5 rounded-[5px] border border-rule-strong bg-surface
+           px-2.5 py-1 text-[12.5px] font-medium text-fg-muted transition-colors
+           hover:border-fg-subtle hover:text-fg
+           disabled:opacity-40 disabled:pointer-events-none;
   }
-  .btn-pri {
-    @apply border-foco bg-foco text-on-accent hover:brightness-110 hover:border-foco;
+  .btn-vivo {
+    @apply border-vivo bg-vivo text-on-accent hover:border-vivo hover:text-on-accent
+           hover:brightness-105;
   }
-  .btn-sm { @apply px-2.5 py-1 text-xs; }
   .inp {
-    @apply w-full rounded-md border border-rule-strong bg-surface px-3 py-1.5 text-[13px]
-           text-fg outline-none placeholder:text-fg-subtle focus:border-foco;
+    @apply w-full rounded-[5px] border border-rule-strong bg-surface px-2.5 py-1.5
+           text-[13px] text-fg outline-none placeholder:text-fg-subtle
+           focus:border-vivo;
   }
-  .rotulo {
-    @apply font-mono text-[10px] uppercase tracking-[0.11em] text-fg-subtle;
+  /* rótulo de instrumento: cabeçalho de coluna, separador, legenda */
+  .rot {
+    @apply font-mono text-[10.5px] font-semibold uppercase tracking-[0.11em] text-fg-subtle;
   }
-  .painel {
-    @apply rounded-lg border border-rule bg-surface shadow-card;
-  }
+  /* valor medido */
+  .med { @apply font-mono tabular-nums; }
+  .painel { @apply rounded-lg border border-rule bg-surface; }
 }

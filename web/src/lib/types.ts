@@ -1,79 +1,91 @@
-// Espelhos TS das tabelas. Mantidos à mão de propósito — o schema é pequeno
-// e um gerador seria mais peça para manter do que economia.
+// Espelhos TS das tabelas. Mantidos à mão: o schema é pequeno e um gerador
+// seria mais peça para manter do que economia.
 
-export type ActivityStatus = 'backlog' | 'semana' | 'fazendo' | 'feito';
-export type EntryKind = 'foco' | 'reuniao' | 'admin' | 'pausa';
-export type EntrySource = 'manual' | 'timer' | 'calendar';
+export type TaskStatus = 'backlog' | 'fila' | 'fazendo' | 'feito';
+export type TaskKind = 'trabalho' | 'reuniao' | 'admin';
+export type SessionSource = 'auto' | 'manual';
+
+export const STATUS: Array<{ id: TaskStatus; label: string }> = [
+  { id: 'backlog', label: 'Backlog' },
+  { id: 'fila', label: 'Fila' },
+  { id: 'fazendo', label: 'Fazendo' },
+  { id: 'feito', label: 'Feito' },
+];
+
+export const KINDS: Array<{ id: TaskKind; label: string }> = [
+  { id: 'trabalho', label: 'Trabalho' },
+  { id: 'reuniao', label: 'Reunião' },
+  { id: 'admin', label: 'Admin' },
+];
 
 export interface Project {
   id: number;
   name: string;
-  /** Código curto usado nos relatórios e no card: "CF03B04", "NACQ". */
   code: string | null;
-  /** Hex sem #, ex "12707B". Usado nos gráficos para a cor ser estável entre relatórios. */
   color: string | null;
   archived_at: string | null;
   created_at: string;
 }
 
-export interface Activity {
+export interface Task {
   id: number;
   project_id: number | null;
   title: string;
-  status: ActivityStatus;
-  /** UTC ISO. NULL = sem prazo. */
+  kind: TaskKind;
+  status: TaskStatus;
+  pos: number;
   due_at: string | null;
-  /** id do evento de prazo que NÓS criamos no Google (v0.4). */
-  gcal_due_id: string | null;
-  /** caminho relativo no vault (v0.3). */
-  note_path: string | null;
-  archived_at: string | null;
+  notes: string | null;
+  /** Quando foi capturada — em geral, no meio de uma reunião. */
   created_at: string;
+  /** Tarefa que estava rodando quando esta foi capturada. */
+  origem_id: number | null;
+  queued_at: string | null;
+  /** PRIMEIRA vez que entrou em 'fazendo'. Base do cycle time. */
+  started_at: string | null;
   done_at: string | null;
+  archived_at: string | null;
 }
 
-export interface TimeEntry {
+/** Tarefa com o que a UI precisa junto: projeto e tempo acumulado. */
+export interface TaskCard extends Task {
+  project_name: string | null;
+  project_code: string | null;
+  project_color: string | null;
+  /** Minutos de sessões FECHADAS. A aberta é contada ao vivo na UI. */
+  minutos: number;
+  /** Quantas vezes já foi trabalhada. Revela tarefa que vive sendo retomada. */
+  sessoes: number;
+  /** Título do que estava rodando na captura — em geral, a reunião. */
+  origem_title: string | null;
+  origem_kind: TaskKind | null;
+}
+
+export interface Session {
   id: number;
-  activity_id: number | null;
-  /** UTC ISO */
+  task_id: number;
   started_at: string;
-  /** UTC ISO */
-  ended_at: string;
-  /** IANA tz vigente no momento do registro. Guardado para o histórico, não para cálculo. */
+  /** NULL = rodando agora. */
+  ended_at: string | null;
   tz: string;
-  kind: EntryKind;
-  source: EntrySource;
-  /** id da INSTÂNCIA do evento (não da série). UNIQUE — é a regra anti-duplicata. */
-  gcal_event_id: string | null;
-  /** NULL = candidato: aparece na timeline, NÃO entra em relatório. */
-  confirmed_at: string | null;
+  source: SessionSource;
   note: string | null;
   created_at: string;
 }
 
-/** Linha da timeline já resolvida para a UI (join com activity + project). */
-export interface DayEntry extends TimeEntry {
-  activity_title: string | null;
+/** Sessão com o contexto da tarefa, para a timeline e o rodapé. */
+export interface SessionCard extends Session {
+  title: string;
+  kind: TaskKind;
   project_name: string | null;
   project_code: string | null;
   project_color: string | null;
 }
 
-/** Card do quadro, com as horas já somadas. */
-export interface BoardCard extends Activity {
-  project_name: string | null;
-  project_code: string | null;
-  project_color: string | null;
-  /** minutos confirmados acumulados */
-  minutes: number;
-}
-
-export interface DayTotals {
-  /** minutos confirmados, excluindo pausa */
+export interface Totais {
+  /** Minutos fechados, no período. */
   total: number;
-  foco: number;
+  trabalho: number;
   reuniao: number;
   admin: number;
-  /** minutos de blocos da agenda ainda NÃO confirmados */
-  pendente: number;
 }

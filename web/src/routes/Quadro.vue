@@ -1,114 +1,104 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { Plus } from 'lucide-vue-next';
-import CardAtividade from '../components/CardAtividade.vue';
-import type { ActivityStatus, BoardCard } from '../lib/types';
+import Card from '../components/Card.vue';
+import type { TaskCard, TaskStatus } from '../lib/types';
 import * as api from '../lib/db';
+import { carregaProjetos, carregaQuadro, move, rodando, tarefas } from '../lib/store';
 import { toast } from '../lib/toast';
-import { cards, carregaProjetos, carregaQuadro, projetos } from '../lib/store';
+import { fmtHM } from '../lib/tempo';
 
-const COLUNAS: Array<{ id: ActivityStatus; label: string }> = [
-  { id: 'backlog', label: 'Backlog' },
-  { id: 'semana', label: 'Esta semana' },
+// O Backlog é uma tela própria, então o quadro tem três colunas largas em vez
+// de quatro apertadas — o que também o faz caber no Windows a 150% de escala.
+const COLUNAS: Array<{ id: TaskStatus; label: string }> = [
+  { id: 'fila', label: 'Fila' },
   { id: 'fazendo', label: 'Fazendo' },
   { id: 'feito', label: 'Feito · 14d' },
 ];
 
-/** Aviso, não trava. WIP alto é sintoma, e a pessoa sabe o que está fazendo. */
-const WIP = 3;
-
 const arrastando = ref<number | null>(null);
-const sobre = ref<ActivityStatus | null>(null);
-
-const novoTitulo = ref('');
-const novoProjeto = ref<number | null>(null);
+const sobre = ref<TaskStatus | null>(null);
+const novo = ref('');
 const criando = ref(false);
 
-const daColuna = (id: ActivityStatus) => computed(() => cards.value.filter((c) => c.status === id));
-const colunas = COLUNAS.map((c) => ({ ...c, itens: daColuna(c.id) }));
+const daColuna = (id: TaskStatus) => tarefas.value.filter((t) => t.status === id);
+const colunas = computed(() => COLUNAS.map((c) => ({ ...c, itens: daColuna(c.id) })));
 
-async function solta(status: ActivityStatus): Promise<void> {
+/** Só UMA tarefa roda de cada vez, mesmo com várias em "Fazendo". */
+const rodandoId = computed(() => rodando.value?.task_id ?? null);
+
+function desde(t: TaskCard): string | null {
+  return t.id === rodandoId.value ? rodando.value!.started_at : null;
+}
+
+const totalColuna = (itens: TaskCard[]) => fmtHM(itens.reduce((s, t) => s + t.minutos, 0));
+
+async function solta(status: TaskStatus): Promise<void> {
   const id = arrastando.value;
   arrastando.value = null;
   sobre.value = null;
-  if (id == null) return;
-  const card = cards.value.find((c) => c.id === id);
-  if (!card || card.status === status) return;
-  try {
-    await api.setActivityStatus(id, status);
-    await carregaQuadro();
-  } catch (e) { toast.erro(api.dbErro(e)); }
+  if (id != null) await move(id, status);
 }
 
 async function cria(): Promise<void> {
-  const t = novoTitulo.value.trim();
+  const t = novo.value.trim();
   if (!t) return;
   try {
-    await api.createActivity(t, novoProjeto.value, 'backlog');
-    novoTitulo.value = '';
+    const id = await api.capturaTarefa(t);
+    await api.moveTask(id, 'fila');
+    novo.value = '';
     criando.value = false;
     await carregaQuadro();
-    toast.ok('Atividade criada');
   } catch (e) { toast.erro(api.dbErro(e)); }
 }
-
-function nomeCurto(c: BoardCard): string { return c.title; }
 
 onMounted(async () => { await carregaProjetos(); await carregaQuadro(); });
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 overflow-auto">
-    <div class="flex items-center gap-2 px-5 pb-1 pt-4">
+  <div class="flex min-h-0 flex-1 flex-col">
+    <div class="flex flex-none items-center gap-2 px-4 pb-2 pt-3">
       <template v-if="criando">
-        <input class="inp max-w-[320px]" v-model="novoTitulo" placeholder="Título da atividade"
-               autofocus @keydown.enter="cria" @keydown.esc="criando = false">
-        <select class="inp max-w-[180px]" v-model="novoProjeto">
-          <option :value="null">— sem projeto —</option>
-          <option v-for="p in projetos" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </select>
-        <button class="btn btn-sm btn-pri" @click="cria">Criar</button>
-        <button class="btn btn-sm" @click="criando = false">Cancelar</button>
+        <input class="inp max-w-[360px]" v-model="novo" placeholder="Título da tarefa" autofocus
+               @keydown.enter="cria" @keydown.esc="criando = false">
+        <button class="btn" @click="cria">Criar na fila</button>
+        <button class="btn" @click="criando = false">Cancelar</button>
       </template>
-      <button v-else class="btn btn-sm" @click="criando = true">
-        <Plus class="h-3.5 w-3.5" />Nova atividade
+      <button v-else class="btn" @click="criando = true">
+        <Plus class="h-3.5 w-3.5" />Nova na fila
       </button>
+      <span class="ml-auto font-mono text-[10.5px] text-fg-subtle">
+        arraste entre colunas · mover para Fazendo começa a contar
+      </span>
     </div>
 
-    <div class="grid min-w-[900px] grid-cols-4 items-start gap-3.5 px-5 pb-7 pt-3">
+    <div class="grid min-h-0 flex-1 grid-cols-3 gap-3 overflow-hidden px-4 pb-4">
       <div v-for="col in colunas" :key="col.id"
-        class="flex min-h-[180px] flex-col rounded-lg border bg-surface"
-        :class="sobre === col.id ? 'border-foco bg-foco/5' : 'border-rule'"
+        class="flex min-h-0 flex-col rounded-lg border bg-surface transition-colors"
+        :class="sobre === col.id ? 'border-vivo bg-vivo-halo/30' : 'border-rule'"
         @dragover.prevent="sobre = col.id" @dragleave="sobre = null" @drop.prevent="solta(col.id)">
 
-        <div class="flex items-center gap-2 border-b border-rule px-3 py-2.5">
-          <span class="rotulo !text-fg-muted">{{ col.label }}</span>
-          <span class="ml-auto font-mono text-[10.5px]"
-                :class="col.id === 'fazendo' && col.itens.value.length > WIP
-                  ? 'font-semibold text-warn' : 'text-fg-subtle'">
-            {{ col.itens.value.length }}<template v-if="col.id === 'fazendo'">/{{ WIP }}</template>
+        <div class="flex flex-none items-center gap-2 border-b border-rule px-3 py-2">
+          <span class="rot">{{ col.label }}</span>
+          <span class="med text-[10.5px] text-fg-subtle">{{ col.itens.length }}</span>
+          <!-- "Fazendo 3" com um ponto: três estão em curso, uma está rodando -->
+          <span v-if="col.id === 'fazendo' && rodando" class="flex items-center gap-1 text-[10.5px] text-vivo">
+            <span class="h-1.5 w-1.5 rounded-full bg-vivo" />1 rodando
           </span>
+          <span class="med ml-auto text-[10.5px] text-fg-subtle">{{ totalColuna(col.itens) }}</span>
         </div>
 
-        <p v-if="col.id === 'fazendo' && col.itens.value.length > WIP"
-           class="mx-2 mb-2 border-l-2 border-warn pl-2 font-mono text-[10px] leading-snug text-warn">
-          Mais de {{ WIP }} em paralelo. Nada trava — só um aviso.
-        </p>
-
-        <div class="flex flex-col gap-2 p-2">
-          <div v-for="c in col.itens.value" :key="c.id" draggable="true"
-               :class="arrastando === c.id && 'opacity-40'"
-               @dragstart="arrastando = c.id" @dragend="arrastando = null; sobre = null">
-            <CardAtividade :card="c" :aria-label="nomeCurto(c)" />
+        <div class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2">
+          <div v-for="t in col.itens" :key="t.id" draggable="true"
+            :class="arrastando === t.id && 'opacity-40'"
+            @dragstart="arrastando = t.id" @dragend="arrastando = null; sobre = null">
+            <Card :card="t" :rodando-desde="desde(t)" />
           </div>
-          <p v-if="!col.itens.value.length" class="px-1 py-1 text-[11.5px] text-fg-subtle">vazio</p>
+          <p v-if="!col.itens.length" class="px-1 py-2 text-[11.5px] text-fg-subtle">
+            {{ col.id === 'fila' ? 'Puxe do backlog.' : 'vazio' }}
+          </p>
         </div>
       </div>
     </div>
-
-    <p class="max-w-[640px] px-5 pb-6 text-[11.5px] leading-relaxed text-fg-subtle">
-      Arraste os cards entre colunas. <b class="text-fg-muted">Feito</b> sai do quadro depois de 14 dias
-      e continua nos relatórios para sempre — é o que impede o quadro de virar cemitério.
-    </p>
   </div>
 </template>

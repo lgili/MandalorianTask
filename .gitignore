@@ -31,3 +31,6 @@ desktop.ini
 .vscode/
 !.vscode/extensions.json
 .idea/
+
+# config local do preview
+.claude/

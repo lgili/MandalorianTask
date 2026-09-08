@@ -1,13 +1,11 @@
-// A ÚNICA camada que fala SQL. Nenhum componente importa isto para escrever query;
-// eles chamam as funções daqui. Mesmo papel que lib/api.ts tem no eBOM generator.
+// A ÚNICA camada que fala SQL. Nenhum componente escreve query; eles chamam
+// as funções daqui. Mesmo papel que lib/api.ts tem no eBOM generator.
 //
-// O schema real é criado pelas migrations em app/src-tauri/src/migrations.rs.
-// Este arquivo assume que elas já rodaram.
+// O schema é criado pelas migrations em src-tauri/src/migrations.rs.
 
 import Database from '@tauri-apps/plugin-sql';
 import type {
-  Activity, ActivityStatus, BoardCard, DayEntry, DayTotals,
-  EntryKind, EntrySource, Project, TimeEntry,
+  Project, Session, SessionCard, Task, TaskCard, TaskKind, TaskStatus, Totais,
 } from './types';
 import { agoraIso, dayRangeUtc, tzAtual, type DayKey } from './tempo';
 
@@ -18,17 +16,20 @@ export async function db(): Promise<Database> {
   return _db;
 }
 
-/** Erro do banco em mensagem que dá pra mostrar. Ninguém quer ver um Result do sqlx. */
+/** Erro do banco em mensagem que dá para mostrar. */
 export function dbErro(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e);
-  if (m.includes('UNIQUE constraint failed: time_entries.gcal_event_id')) {
-    return 'Este evento da agenda já foi importado.';
+  if (m.includes('idx_uma_sessao_aberta')) {
+    return 'Já existe uma tarefa rodando. Pare ela antes de começar outra.';
   }
   if (m.includes('UNIQUE constraint failed: projects.name')) {
     return 'Já existe um projeto com esse nome.';
   }
   if (m.includes('FOREIGN KEY constraint failed')) {
-    return 'Referência inválida — o projeto ou a atividade não existe mais.';
+    return 'Referência inválida — o projeto ou a tarefa não existe mais.';
+  }
+  if (m.includes('CHECK constraint failed')) {
+    return 'Horário inválido: o fim precisa ser depois do início.';
   }
   return m;
 }
@@ -38,8 +39,7 @@ export function dbErro(e: unknown): string {
 export async function listProjects(incluirArquivados = false): Promise<Project[]> {
   const d = await db();
   return d.select<Project[]>(
-    `SELECT * FROM projects
-      ${incluirArquivados ? '' : 'WHERE archived_at IS NULL'}
+    `SELECT * FROM projects ${incluirArquivados ? '' : 'WHERE archived_at IS NULL'}
       ORDER BY name COLLATE NOCASE`,
   );
 }
@@ -49,7 +49,7 @@ export async function createProject(
 ): Promise<number> {
   const d = await db();
   const r = await d.execute(
-    `INSERT INTO projects (name, code, color, created_at) VALUES ($1, $2, $3, $4)`,
+    `INSERT INTO projects (name, code, color, created_at) VALUES ($1,$2,$3,$4)`,
     [name.trim(), code?.trim() || null, color, agoraIso()],
   );
   return r.lastInsertId as number;
@@ -58,266 +58,311 @@ export async function createProject(
 export async function updateProject(
   id: number, patch: Partial<Pick<Project, 'name' | 'code' | 'color' | 'archived_at'>>,
 ): Promise<void> {
-  const d = await db();
-  const campos = Object.keys(patch);
-  if (!campos.length) return;
-  const set = campos.map((c, i) => `${c} = $${i + 1}`).join(', ');
-  await d.execute(
-    `UPDATE projects SET ${set} WHERE id = $${campos.length + 1}`,
-    [...campos.map((c) => (patch as Record<string, unknown>)[c]), id],
-  );
+  await patchRow('projects', id, patch);
 }
 
-// ─────────────────────────────── atividades ───────────────────────────────
+// ───────────────────────────────── tarefas ─────────────────────────────────
 
-const CARD_SELECT = `
-  SELECT a.*,
+const TASK_SELECT = `
+  SELECT t.*,
          p.name  AS project_name,
          p.code  AS project_code,
          p.color AS project_color,
-         COALESCE((
-           SELECT SUM((julianday(t.ended_at) - julianday(t.started_at)) * 1440)
-             FROM time_entries t
-            WHERE t.activity_id = a.id
-              AND t.confirmed_at IS NOT NULL
-              AND t.kind <> 'pausa'
-         ), 0) AS minutes
-    FROM activities a
-    LEFT JOIN projects p ON p.id = a.project_id`;
+         COALESCE((SELECT SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440)
+                     FROM sessions s
+                    WHERE s.task_id = t.id AND s.ended_at IS NOT NULL), 0) AS minutos,
+         COALESCE((SELECT COUNT(*) FROM sessions s WHERE s.task_id = t.id), 0) AS sessoes,
+         o.title AS origem_title,
+         o.kind  AS origem_kind
+    FROM tasks t
+    LEFT JOIN projects p ON p.id = t.project_id
+    LEFT JOIN tasks    o ON o.id = t.origem_id`;
 
-export async function boardCards(): Promise<BoardCard[]> {
+/** Tudo que está no quadro (inclui o backlog). */
+export async function boardTasks(): Promise<TaskCard[]> {
   const d = await db();
-  const rows = await d.select<BoardCard[]>(
-    `${CARD_SELECT}
-      WHERE a.archived_at IS NULL
-      ORDER BY (a.due_at IS NULL), a.due_at, a.created_at DESC`,
+  const rows = await d.select<TaskCard[]>(
+    `${TASK_SELECT} WHERE t.archived_at IS NULL ORDER BY t.pos, t.created_at DESC`,
   );
   // SUM sobre julianday devolve float; a UI só lida com minutos inteiros.
-  return rows.map((r) => ({ ...r, minutes: Math.round(r.minutes) }));
-}
-
-export async function activeActivities(): Promise<BoardCard[]> {
-  const rows = await boardCards();
-  return rows.filter((a) => a.status === 'fazendo' || a.status === 'semana');
-}
-
-export async function createActivity(
-  title: string, project_id: number | null = null, status: ActivityStatus = 'backlog',
-): Promise<number> {
-  const d = await db();
-  const r = await d.execute(
-    `INSERT INTO activities (project_id, title, status, created_at)
-     VALUES ($1, $2, $3, $4)`,
-    [project_id, title.trim(), status, agoraIso()],
-  );
-  return r.lastInsertId as number;
-}
-
-export async function setActivityStatus(id: number, status: ActivityStatus): Promise<void> {
-  const d = await db();
-  // done_at só existe enquanto o status for 'feito' — voltar a carta desfaz a conclusão.
-  await d.execute(
-    `UPDATE activities SET status = $1, done_at = CASE WHEN $1 = 'feito' THEN $2 ELSE NULL END
-      WHERE id = $3`,
-    [status, agoraIso(), id],
-  );
-}
-
-export async function updateActivity(
-  id: number,
-  patch: Partial<Pick<Activity, 'title' | 'project_id' | 'due_at' | 'note_path' | 'archived_at'>>,
-): Promise<void> {
-  const d = await db();
-  const campos = Object.keys(patch);
-  if (!campos.length) return;
-  const set = campos.map((c, i) => `${c} = $${i + 1}`).join(', ');
-  await d.execute(
-    `UPDATE activities SET ${set} WHERE id = $${campos.length + 1}`,
-    [...campos.map((c) => (patch as Record<string, unknown>)[c]), id],
-  );
+  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
 }
 
 /**
- * Tira do quadro o que está em 'feito' há mais de N dias. Continua nos relatórios
- * para sempre — é só sair da vista. Sem isto o quadro vira cemitério.
+ * Captura rápida. É a operação mais usada do app — durante uma reunião — então
+ * só o título é obrigatório. Entra no topo do backlog.
  */
-export async function arquivarFeitosAntigos(dias = 14): Promise<number> {
+export async function capturaTarefa(
+  title: string, project_id: number | null = null, kind: TaskKind = 'trabalho',
+  due_at: string | null = null,
+): Promise<number> {
+  const d = await db();
+  // Contexto de captura: o que estava rodando neste instante. Ninguém digita isto.
+  const aberta = await d.select<Array<{ task_id: number }>>(
+    `SELECT task_id FROM sessions WHERE ended_at IS NULL LIMIT 1`);
+  const origem = aberta[0]?.task_id ?? null;
+  const min = await d.select<Array<{ m: number | null }>>(
+    `SELECT MIN(pos) AS m FROM tasks WHERE status = 'backlog' AND archived_at IS NULL`,
+  );
+  const pos = (min[0]?.m ?? 0) - 1;   // topo da coluna
+  const agora = agoraIso();
+  const r = await d.execute(
+    `INSERT INTO tasks (project_id, title, kind, status, pos, created_at, due_at, origem_id)
+     VALUES ($1,$2,$3,'backlog',$4,$5,$6,$7)`,
+    [project_id, title.trim(), kind, pos, agora, due_at, origem],
+  );
+  const id = r.lastInsertId as number;
+  await d.execute(`INSERT INTO transitions (task_id, de, para, at) VALUES ($1,NULL,'backlog',$2)`,
+    [id, agora]);
+  return id;
+}
+
+export async function updateTask(
+  id: number,
+  patch: Partial<Pick<Task, 'title' | 'project_id' | 'kind' | 'due_at' | 'notes' | 'pos' | 'archived_at'>>,
+): Promise<void> {
+  await patchRow('tasks', id, patch);
+}
+
+export async function deleteTask(id: number): Promise<void> {
+  const d = await db();
+  await d.execute(`DELETE FROM tasks WHERE id = $1`, [id]);   // sessões caem junto (CASCADE)
+}
+
+/**
+ * Move a tarefa de coluna — e é ISTO que produz o tempo.
+ *
+ * Entrar em 'fazendo' abre uma sessão; sair fecha. O usuário nunca aperta
+ * "iniciar cronômetro": o cronômetro é consequência do quadro.
+ *
+ * A ordem importa: fechamos ANTES de abrir, sempre. Assim, se o app morrer no
+ * meio, o pior caso é nenhuma sessão aberta — nunca duas, que seria hora
+ * contada em dobro. (O índice único no banco também barraria, mas é melhor
+ * não depender disso.)
+ */
+export async function moveTask(id: number, para: TaskStatus): Promise<void> {
+  const d = await db();
+  const atual = await d.select<Array<{ status: TaskStatus; started_at: string | null }>>(
+    `SELECT status, started_at FROM tasks WHERE id = $1`, [id]);
+  if (!atual.length) return;
+  const de = atual[0].status;
+  if (de === para) return;
+  const agora = agoraIso();
+
+  // 1. Fecha QUALQUER sessão aberta (desta tarefa ou de outra).
+  await d.execute(`UPDATE sessions SET ended_at = $1 WHERE ended_at IS NULL`, [agora]);
+
+  // 2. Abre uma nova só se estiver entrando em 'fazendo'.
+  if (para === 'fazendo') {
+    await d.execute(
+      `INSERT INTO sessions (task_id, started_at, tz, source, created_at)
+       VALUES ($1,$2,$3,'auto',$4)`,
+      [id, agora, tzAtual(), agora],
+    );
+  }
+
+  // 3. Carimbos. started_at guarda só a PRIMEIRA vez em 'fazendo'.
+  await d.execute(
+    `UPDATE tasks SET
+       status     = $1,
+       queued_at  = CASE WHEN $1 = 'fila'    AND queued_at  IS NULL THEN $2 ELSE queued_at  END,
+       started_at = CASE WHEN $1 = 'fazendo' AND started_at IS NULL THEN $2 ELSE started_at END,
+       done_at    = CASE WHEN $1 = 'feito' THEN $2 ELSE NULL END
+     WHERE id = $3`,
+    [para, agora, id],
+  );
+
+  await d.execute(`INSERT INTO transitions (task_id, de, para, at) VALUES ($1,$2,$3,$4)`,
+    [id, de, para, agora]);
+}
+
+/** Reordena dentro da coluna: pos vira a média dos vizinhos, sem reescrever a lista. */
+export async function reordena(id: number, anterior: number | null, proximo: number | null): Promise<void> {
+  const pos = anterior != null && proximo != null ? (anterior + proximo) / 2
+    : anterior != null ? anterior + 1
+    : proximo != null ? proximo - 1
+    : 0;
+  await patchRow('tasks', id, { pos });
+}
+
+/** Tira do quadro o que está em 'feito' há mais de N dias. Relatórios seguem vendo. */
+export async function arquivaFeitos(dias = 14): Promise<number> {
   const d = await db();
   const r = await d.execute(
-    `UPDATE activities SET archived_at = $1
-      WHERE status = 'feito' AND archived_at IS NULL
-        AND done_at IS NOT NULL
+    `UPDATE tasks SET archived_at = $1
+      WHERE status = 'feito' AND archived_at IS NULL AND done_at IS NOT NULL
         AND julianday($1) - julianday(done_at) > $2`,
     [agoraIso(), dias],
   );
   return r.rowsAffected;
 }
 
-// ────────────────────────────── entradas de tempo ──────────────────────────
+// ───────────────────────────────── sessões ─────────────────────────────────
 
-export async function entriesForDay(key: DayKey): Promise<DayEntry[]> {
+const SESSION_SELECT = `
+  SELECT s.*, t.title, t.kind, p.name AS project_name, p.code AS project_code, p.color AS project_color
+    FROM sessions s
+    JOIN tasks t     ON t.id = s.task_id
+    LEFT JOIN projects p ON p.id = t.project_id`;
+
+/** A sessão que está rodando agora, se houver. */
+export async function sessaoAberta(): Promise<SessionCard | null> {
+  const d = await db();
+  const r = await d.select<SessionCard[]>(`${SESSION_SELECT} WHERE s.ended_at IS NULL LIMIT 1`);
+  return r[0] ?? null;
+}
+
+/** Fecha a sessão aberta sem mexer no status da tarefa (botão "pausar"). */
+export async function pausa(): Promise<void> {
+  const d = await db();
+  await d.execute(`UPDATE sessions SET ended_at = $1 WHERE ended_at IS NULL`, [agoraIso()]);
+}
+
+export async function sessoesDoDia(key: DayKey): Promise<SessionCard[]> {
   const d = await db();
   const { from, to } = dayRangeUtc(key);
-  // Pega quem COMEÇA no dia. Bloco que atravessa a meia-noite pertence ao dia
-  // em que começou — é como a pessoa pensa sobre o próprio dia.
-  return d.select<DayEntry[]>(
-    `SELECT t.*,
-            a.title AS activity_title,
-            p.name  AS project_name,
-            p.code  AS project_code,
-            p.color AS project_color
-       FROM time_entries t
-       LEFT JOIN activities a ON a.id = t.activity_id
-       LEFT JOIN projects   p ON p.id = a.project_id
-      WHERE t.started_at >= $1 AND t.started_at < $2
-      ORDER BY t.started_at`,
+  // Pega quem COMEÇOU no dia: sessão que atravessa a meia-noite pertence ao dia
+  // em que começou, que é como a pessoa pensa sobre o próprio dia.
+  return d.select<SessionCard[]>(
+    `${SESSION_SELECT} WHERE s.started_at >= $1 AND s.started_at < $2 ORDER BY s.started_at`,
     [from, to],
   );
 }
 
-export async function dayTotals(key: DayKey): Promise<DayTotals> {
-  const entradas = await entriesForDay(key);
-  const t: DayTotals = { total: 0, foco: 0, reuniao: 0, admin: 0, pendente: 0 };
-  for (const e of entradas) {
+export async function totaisDoDia(key: DayKey): Promise<Totais> {
+  const sess = await sessoesDoDia(key);
+  const t: Totais = { total: 0, trabalho: 0, reuniao: 0, admin: 0 };
+  for (const s of sess) {
+    if (!s.ended_at) continue;   // a que roda é contada ao vivo na UI
     const min = Math.round(
-      (new Date(e.ended_at).getTime() - new Date(e.started_at).getTime()) / 60000,
-    );
-    if (e.kind === 'pausa') continue;
-    // Candidato da agenda NÃO conta. É a regra que faz o número ser confiável.
-    if (!e.confirmed_at) { t.pendente += min; continue; }
+      (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000);
     t.total += min;
-    if (e.kind === 'foco') t.foco += min;
-    else if (e.kind === 'reuniao') t.reuniao += min;
-    else if (e.kind === 'admin') t.admin += min;
+    t[s.kind] += min;
   }
   return t;
 }
 
-export interface NovaEntrada {
-  activity_id: number | null;
-  started_at: string;
-  ended_at: string;
-  kind: EntryKind;
-  source?: EntrySource;
-  gcal_event_id?: string | null;
-  /** Manual nasce confirmado; da agenda nasce candidato. */
-  confirmed?: boolean;
-  note?: string | null;
-}
-
-export async function createEntry(e: NovaEntrada): Promise<number> {
+/** Sessão lançada à mão — "esqueci de mover o card". */
+export async function criaSessao(
+  task_id: number, started_at: string, ended_at: string, note: string | null = null,
+): Promise<number> {
   const d = await db();
-  const source = e.source ?? 'manual';
-  const confirmado = e.confirmed ?? source !== 'calendar';
   const r = await d.execute(
-    `INSERT INTO time_entries
-       (activity_id, started_at, ended_at, tz, kind, source, gcal_event_id, confirmed_at, note, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-    [e.activity_id, e.started_at, e.ended_at, tzAtual(), e.kind, source,
-     e.gcal_event_id ?? null, confirmado ? agoraIso() : null, e.note ?? null, agoraIso()],
+    `INSERT INTO sessions (task_id, started_at, ended_at, tz, source, note, created_at)
+     VALUES ($1,$2,$3,$4,'manual',$5,$6)`,
+    [task_id, started_at, ended_at, tzAtual(), note, agoraIso()],
   );
   return r.lastInsertId as number;
 }
 
-export async function updateEntry(
-  id: number,
-  patch: Partial<Pick<TimeEntry, 'activity_id' | 'started_at' | 'ended_at' | 'kind' | 'note'>>,
+export async function updateSession(
+  id: number, patch: Partial<Pick<Session, 'started_at' | 'ended_at' | 'task_id' | 'note'>>,
 ): Promise<void> {
-  const d = await db();
-  const campos = Object.keys(patch);
-  if (!campos.length) return;
-  const set = campos.map((c, i) => `${c} = $${i + 1}`).join(', ');
-  await d.execute(
-    `UPDATE time_entries SET ${set} WHERE id = $${campos.length + 1}`,
-    [...campos.map((c) => (patch as Record<string, unknown>)[c]), id],
-  );
+  await patchRow('sessions', id, patch);
 }
 
-export async function setEntryConfirmed(id: number, confirmado: boolean): Promise<void> {
+export async function deleteSession(id: number): Promise<void> {
   const d = await db();
-  await d.execute(`UPDATE time_entries SET confirmed_at = $1 WHERE id = $2`,
-    [confirmado ? agoraIso() : null, id]);
+  await d.execute(`DELETE FROM sessions WHERE id = $1`, [id]);
 }
 
-export async function confirmDay(key: DayKey): Promise<number> {
-  const d = await db();
-  const { from, to } = dayRangeUtc(key);
-  const r = await d.execute(
-    `UPDATE time_entries SET confirmed_at = $1
-      WHERE confirmed_at IS NULL AND started_at >= $2 AND started_at < $3`,
-    [agoraIso(), from, to],
-  );
-  return r.rowsAffected;
-}
-
-export async function deleteEntry(id: number): Promise<void> {
-  const d = await db();
-  await d.execute(`DELETE FROM time_entries WHERE id = $1`, [id]);
-}
-
-// ────────────────────────────── relatórios ──────────────────────────────
+// ─────────────────────────────── relatórios ───────────────────────────────
 
 export interface LinhaProjeto {
   project_id: number | null;
   project_name: string | null;
   project_code: string | null;
   project_color: string | null;
-  minutes: number;
+  minutos: number;
 }
 
-/** Horas por projeto num intervalo. Só confirmado, sem pausa. */
 export async function horasPorProjeto(fromUtc: string, toUtc: string): Promise<LinhaProjeto[]> {
   const d = await db();
   const rows = await d.select<LinhaProjeto[]>(
     `SELECT p.id AS project_id, p.name AS project_name, p.code AS project_code,
             p.color AS project_color,
-            SUM((julianday(t.ended_at) - julianday(t.started_at)) * 1440) AS minutes
-       FROM time_entries t
-       LEFT JOIN activities a ON a.id = t.activity_id
-       LEFT JOIN projects   p ON p.id = a.project_id
-      WHERE t.confirmed_at IS NOT NULL AND t.kind <> 'pausa'
-        AND t.started_at >= $1 AND t.started_at < $2
-      GROUP BY p.id
-      ORDER BY minutes DESC`,
+            SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440) AS minutos
+       FROM sessions s
+       JOIN tasks t ON t.id = s.task_id
+       LEFT JOIN projects p ON p.id = t.project_id
+      WHERE s.ended_at IS NOT NULL AND s.started_at >= $1 AND s.started_at < $2
+      GROUP BY p.id ORDER BY minutos DESC`,
     [fromUtc, toUtc],
   );
-  return rows.map((r) => ({ ...r, minutes: Math.round(r.minutes) }));
+  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
 }
 
-export interface LinhaDia { dia: string; kind: EntryKind; minutes: number }
+export interface LinhaDia { dia: string; kind: TaskKind; minutos: number }
 
-/**
- * Minutos por dia e por tipo. O agrupamento por dia é feito em SQL com o
- * offset local aplicado — 'localtime' usa o fuso do sistema, que é o do usuário.
- */
 export async function minutosPorDia(fromUtc: string, toUtc: string): Promise<LinhaDia[]> {
   const d = await db();
   const rows = await d.select<LinhaDia[]>(
-    `SELECT date(t.started_at, 'localtime') AS dia,
-            t.kind AS kind,
-            SUM((julianday(t.ended_at) - julianday(t.started_at)) * 1440) AS minutes
-       FROM time_entries t
-      WHERE t.confirmed_at IS NOT NULL AND t.kind <> 'pausa'
-        AND t.started_at >= $1 AND t.started_at < $2
-      GROUP BY dia, kind
-      ORDER BY dia`,
+    `SELECT date(s.started_at, 'localtime') AS dia, t.kind AS kind,
+            SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440) AS minutos
+       FROM sessions s JOIN tasks t ON t.id = s.task_id
+      WHERE s.ended_at IS NOT NULL AND s.started_at >= $1 AND s.started_at < $2
+      GROUP BY dia, kind ORDER BY dia`,
     [fromUtc, toUtc],
   );
-  return rows.map((r) => ({ ...r, minutes: Math.round(r.minutes) }));
+  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
+}
+
+/** Lead time (captura -> feito) e cycle time (começou -> feito), em horas. */
+export interface Fluxo { task_id: number; title: string; lead_h: number; cycle_h: number | null }
+
+export async function fluxoConcluidas(fromUtc: string, toUtc: string): Promise<Fluxo[]> {
+  const d = await db();
+  const rows = await d.select<Fluxo[]>(
+    `SELECT id AS task_id, title,
+            (julianday(done_at) - julianday(created_at)) * 24 AS lead_h,
+            CASE WHEN started_at IS NULL THEN NULL
+                 ELSE (julianday(done_at) - julianday(started_at)) * 24 END AS cycle_h
+       FROM tasks
+      WHERE done_at IS NOT NULL AND done_at >= $1 AND done_at < $2
+      ORDER BY done_at DESC`,
+    [fromUtc, toUtc],
+  );
+  return rows.map((r) => ({
+    ...r,
+    lead_h: Math.round(r.lead_h * 10) / 10,
+    cycle_h: r.cycle_h == null ? null : Math.round(r.cycle_h * 10) / 10,
+  }));
 }
 
 // ──────────────────────────────── meta ────────────────────────────────
 
 export async function getMeta(key: string): Promise<string | null> {
   const d = await db();
-  const r = await d.select<Array<{ value: string }>>(
-    `SELECT value FROM meta WHERE key = $1`, [key]);
+  const r = await d.select<Array<{ value: string }>>(`SELECT value FROM meta WHERE key = $1`, [key]);
   return r.length ? r[0].value : null;
 }
 
 export async function setMeta(key: string, value: string): Promise<void> {
   const d = await db();
   await d.execute(
-    `INSERT INTO meta (key, value) VALUES ($1, $2)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [key, value]);
+    `INSERT INTO meta (key,value) VALUES ($1,$2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, value]);
+}
+
+// ──────────────────────────────── interno ────────────────────────────────
+
+/**
+ * UPDATE parcial. As chaves vêm de tipos TS, mas TS não existe em runtime —
+ * então validamos contra uma lista branca antes de interpolar no SQL.
+ */
+const COLUNAS: Record<string, ReadonlySet<string>> = {
+  projects: new Set(['name', 'code', 'color', 'archived_at']),
+  tasks: new Set(['title', 'project_id', 'kind', 'status', 'due_at', 'notes', 'pos', 'archived_at']),
+  sessions: new Set(['started_at', 'ended_at', 'task_id', 'note']),
+};
+
+async function patchRow(tabela: keyof typeof COLUNAS, id: number, patch: object): Promise<void> {
+  const campos = Object.keys(patch).filter((c) => COLUNAS[tabela].has(c));
+  if (!campos.length) return;
+  const d = await db();
+  const set = campos.map((c, i) => `${c} = $${i + 1}`).join(', ');
+  await d.execute(
+    `UPDATE ${tabela} SET ${set} WHERE id = $${campos.length + 1}`,
+    [...campos.map((c) => (patch as Record<string, unknown>)[c]), id],
+  );
 }
