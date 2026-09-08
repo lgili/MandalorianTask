@@ -1,0 +1,33 @@
+[package]
+name = "bancada"
+version = "0.1.0"
+description = "Bancada — registro de trabalho local-first"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-sql = { version = "2.4.1", features = ["sqlite"] }
+tauri-plugin-dialog = "2.7.3"
+tauri-plugin-opener = "2.5.5"
+tauri-plugin-store = "2.4.4"
+
+# v0.2 — Google Agenda. Descomente junto com os plugins em main.rs
+# e as permissões em capabilities/default.json.
+# tauri-plugin-http = "2.6.0"
+# tauri-plugin-oauth = "2.1.0"          # FabianLars; npm: @fabianlars/tauri-plugin-oauth
+# tauri-plugin-notification = "2.4.0"   # v0.4 — aviso de prazo
+# tauri-plugin-global-shortcut = "2.3.2" # v0.3 — captura rápida global
+# tauri-plugin-fs = "2.5.2"             # v0.3 — vault de notas
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

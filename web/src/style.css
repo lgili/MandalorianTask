@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens como triplas RGB — ver tailwind.config.js.
+   Claro é o padrão: ferramenta de engenharia se usa de dia. */
+:root {
+  color-scheme: light;
+  --surface: 255 255 255;
+  --surface-1: 241 243 244;
+  --surface-2: 231 235 236;
+  --surface-3: 216 222 223;
+  --fg: 22 25 27;
+  --fg-muted: 78 88 91;
+  --fg-subtle: 124 135 138;
+  --rule: 214 221 222;
+  --rule-strong: 182 192 194;
+  --foco: 18 112 123;
+  --reuniao: 176 96 58;
+  --admin: 92 107 138;
+  --pausa: 154 165 167;
+  --ok: 47 122 71;
+  --warn: 138 99 32;
+  --danger: 163 53 38;
+  --on-accent: 255 255 255;
+  --shadow: 20 32 35;
+}
+
+.dark {
+  color-scheme: dark;
+  --surface: 25 31 34;
+  --surface-1: 17 21 23;
+  --surface-2: 33 42 45;
+  --surface-3: 43 53 56;
+  --fg: 231 236 237;
+  --fg-muted: 163 175 178;
+  --fg-subtle: 120 134 138;
+  --rule: 40 49 52;
+  --rule-strong: 58 69 72;
+  --foco: 79 179 189;
+  --reuniao: 212 138 98;
+  --admin: 132 150 188;
+  --pausa: 90 102 105;
+  --ok: 107 191 136;
+  --warn: 201 162 78;
+  --danger: 217 124 108;
+  --on-accent: 14 20 22;
+  --shadow: 0 0 0;
+}
+
+@layer base {
+  body {
+    @apply bg-surface-1 text-fg font-sans text-sm antialiased;
+  }
+  /* Foco visível de teclado: o app é operado por atalho. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-foco ring-offset-1 ring-offset-surface-1 rounded;
+  }
+}
+
+/* Componentes de verdade, num lugar só. No eBOM estes @apply estão copiados
+   dentro de três arquivos de rota com definições que já divergiram. */
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 rounded-md border border-rule-strong bg-surface
+           px-3 py-1.5 text-[13px] font-medium shadow-card transition
+           hover:border-fg-subtle disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-pri {
+    @apply border-foco bg-foco text-on-accent hover:brightness-110 hover:border-foco;
+  }
+  .btn-sm { @apply px-2.5 py-1 text-xs; }
+  .inp {
+    @apply w-full rounded-md border border-rule-strong bg-surface px-3 py-1.5 text-[13px]
+           text-fg outline-none placeholder:text-fg-subtle focus:border-foco;
+  }
+  .rotulo {
+    @apply font-mono text-[10px] uppercase tracking-[0.11em] text-fg-subtle;
+  }
+  .painel {
+    @apply rounded-lg border border-rule bg-surface shadow-card;
+  }
+}

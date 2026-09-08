@@ -1,0 +1,33 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+web/dist/
+src-tauri/target/
+src-tauri/gen/
+# icons/ NÃO entra aqui: são gerados uma vez por `pnpm tauri icon` e o
+# generate_context! exige que existam em build time — inclusive no CI.
+
+# local data — o banco do app nunca vai pro git
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# segredos: tokens do Google ficam no appdata, mas nunca arrisque
+google.json
+*.local
+.env
+.env.*
+
+# os
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# editor
+.vscode/
+!.vscode/extensions.json
+.idea/
