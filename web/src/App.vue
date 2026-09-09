@@ -66,7 +66,7 @@ onMounted(async () => {
 <template>
   <div class="grid h-screen grid-cols-[188px_minmax(0,1fr)] max-[900px]:grid-cols-[52px_minmax(0,1fr)]">
     <!-- ── lateral ── -->
-    <aside class="flex min-w-0 flex-col border-r border-rule bg-surface">
+    <aside class="flex min-w-0 flex-col border-r border-rule bg-surface-2">
       <div class="flex items-center gap-2 border-b border-rule px-3.5 py-3">
         <div class="grid h-5 w-5 flex-none place-items-center rounded-[4px] bg-fg font-mono
                     text-[11px] font-bold text-surface">B</div>
@@ -76,9 +76,11 @@ onMounted(async () => {
       <nav class="flex flex-1 flex-col gap-px overflow-y-auto p-1.5">
         <RouterLink v-for="r in navs" :key="r.path" :to="r.path"
           class="grid grid-cols-[16px_1fr_auto] items-center gap-2.5 rounded-[5px] px-2 py-1.5
-                 text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg
+                 text-[13px] text-fg-muted transition-colors hover:text-fg
                  max-[900px]:grid-cols-[16px] max-[900px]:justify-center"
-          :class="route.path === r.path && 'bg-surface-2 !text-fg font-semibold'">
+          :class="route.path === r.path
+            ? 'bg-surface !text-fg font-semibold shadow-card'
+            : 'hover:bg-surface/60'">
           <component :is="ICONES[r.meta.icone as keyof typeof ICONES]" class="h-[15px] w-[15px]" />
           <span class="max-[900px]:hidden">{{ r.meta.titulo }}</span>
           <span class="med text-[10px] text-fg-subtle max-[900px]:hidden">{{ r.meta.tecla }}</span>
@@ -86,7 +88,8 @@ onMounted(async () => {
       </nav>
 
       <!-- ── sessão ativa: o único lugar com cor saturada ── -->
-      <div class="border-t border-rule px-3 py-2.5 max-[900px]:hidden">
+      <div class="m-2 rounded-[6px] border px-2.5 py-2 max-[900px]:hidden"
+        :class="rodando ? 'border-vivo/40 bg-vivo-halo' : 'border-rule bg-surface/50'">
         <template v-if="rodando">
           <div class="rot mb-1 flex items-center gap-1.5 !text-vivo">
             <span class="relative flex h-1.5 w-1.5">
@@ -124,7 +127,7 @@ onMounted(async () => {
 
     <!-- ── conteúdo ── -->
     <main class="flex min-w-0 flex-col overflow-hidden">
-      <div class="flex h-11 flex-none items-center gap-3 border-b border-rule bg-surface px-4">
+      <div class="flex h-11 flex-none items-center gap-3 border-b border-rule bg-surface-2 px-4">
         <h1 class="m-0 text-[14px] font-semibold tracking-tight">{{ route.meta.titulo }}</h1>
         <div v-if="rodando" class="ml-auto flex items-center gap-2 text-[12px] text-fg-muted">
           <span class="h-1.5 w-1.5 rounded-full bg-vivo" />

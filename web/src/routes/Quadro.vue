@@ -67,28 +67,30 @@ onMounted(async () => { await carregaProjetos(); await carregaQuadro(); });
       <button v-else class="btn" @click="criando = true">
         <Plus class="h-3.5 w-3.5" />Nova na fila
       </button>
-      <span class="ml-auto font-mono text-[10.5px] text-fg-subtle">
-        arraste entre colunas · mover para Fazendo começa a contar
+      <span class="ml-auto font-mono text-[10.5px] text-fg-muted">
+        arraste entre colunas · <span class="text-vivo">Fazendo</span> começa a contar
       </span>
     </div>
 
     <div class="grid min-h-0 flex-1 grid-cols-3 gap-3 overflow-hidden px-4 pb-4">
       <div v-for="col in colunas" :key="col.id"
-        class="flex min-h-0 flex-col rounded-lg border bg-surface transition-colors"
-        :class="sobre === col.id ? 'border-vivo bg-vivo-halo/30' : 'border-rule'"
+        class="faixa flex min-h-0 flex-col transition-colors"
+        :class="sobre === col.id && '!border-vivo !bg-vivo-halo'"
         @dragover.prevent="sobre = col.id" @dragleave="sobre = null" @drop.prevent="solta(col.id)">
 
-        <div class="flex flex-none items-center gap-2 border-b border-rule px-3 py-2">
-          <span class="rot">{{ col.label }}</span>
-          <span class="med text-[10.5px] text-fg-subtle">{{ col.itens.length }}</span>
-          <!-- "Fazendo 3" com um ponto: três estão em curso, uma está rodando -->
-          <span v-if="col.id === 'fazendo' && rodando" class="flex items-center gap-1 text-[10.5px] text-vivo">
+        <div class="flex flex-none items-center gap-2 px-2.5 pb-1.5 pt-2.5">
+          <span class="rot !text-fg-muted">{{ col.label }}</span>
+          <span class="med rounded-full bg-surface-3/70 px-1.5 py-[1px] text-[10px] font-semibold
+                       leading-[15px] text-fg-muted">{{ col.itens.length }}</span>
+          <!-- três em curso, uma rodando: a distinção que o app faz -->
+          <span v-if="col.id === 'fazendo' && rodando"
+            class="flex items-center gap-1 text-[10px] font-semibold text-vivo">
             <span class="h-1.5 w-1.5 rounded-full bg-vivo" />1 rodando
           </span>
-          <span class="med ml-auto text-[10.5px] text-fg-subtle">{{ totalColuna(col.itens) }}</span>
+          <span class="med ml-auto text-[11px] font-semibold text-fg-muted">{{ totalColuna(col.itens) }}</span>
         </div>
 
-        <div class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2">
+        <div class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-2">
           <div v-for="t in col.itens" :key="t.id" draggable="true"
             :class="arrastando === t.id && 'opacity-40'"
             @dragstart="arrastando = t.id" @dragend="arrastando = null; sobre = null">

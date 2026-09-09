@@ -84,19 +84,22 @@ onMounted(() => carregaDia());
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
+      <div class="max-w-[820px]">
       <p v-if="!linhas.length" class="mt-16 text-center text-[13px] text-fg-subtle">
         Nada registrado neste dia.<br>
         <span class="text-[12px]">Mover um card para <b>Fazendo</b> no Quadro começa a contar.</span>
       </p>
 
       <div v-for="l in linhas" :key="l.s.id"
-        class="group grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-rule py-2">
+        class="group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[5px] border-b
+               border-rule px-2 py-[7px] transition-colors hover:bg-surface"
+        :class="l.aberta && 'bg-vivo-halo'">
         <span class="med text-[11px] text-fg-subtle">
           {{ hhmm(l.s.started_at) }}–{{ l.s.ended_at ? hhmm(l.s.ended_at) : '…' }}
         </span>
 
         <div class="flex min-w-0 items-center gap-2">
-          <span class="h-2 w-2 flex-none rounded-[2px]" :class="COR[l.s.kind]" />
+          <span class="h-3.5 w-[3px] flex-none rounded-full" :class="COR[l.s.kind]" />
           <span class="truncate text-[13px]">{{ l.s.title }}</span>
           <span v-if="l.s.project_code" class="med flex-none text-[10.5px] text-fg-subtle">
             {{ l.s.project_code }}</span>
@@ -113,6 +116,7 @@ onMounted(() => carregaDia());
           <span class="med w-[68px] text-right text-[13px] font-semibold"
             :class="l.aberta ? 'text-vivo' : 'text-fg-muted'">{{ l.dur }}</span>
         </div>
+      </div>
       </div>
     </div>
 

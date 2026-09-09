@@ -16,6 +16,8 @@ export default {
         // o único saturado: significa "rodando agora"
         vivo: { DEFAULT: v('vivo'), ink: v('vivo-ink'), halo: v('vivo-halo') },
 
+        p1: v('p1'), p2: v('p2'), p3: v('p3'), p4: v('p4'), p5: v('p5'), p6: v('p6'),
+
         trabalho: v('trabalho'),
         reuniao: v('reuniao'),
         admin: v('admin'),
@@ -30,7 +32,7 @@ export default {
         mono: ['"IBM Plex Mono"', 'ui-monospace', 'Consolas', 'monospace'],
       },
       boxShadow: {
-        card: '0 1px 2px rgb(var(--shadow) / .06)',
+        card: '0 1px 1px rgb(var(--shadow) / .05), 0 1px 3px rgb(var(--shadow) / .07)',
         pop: '0 4px 6px -2px rgb(var(--shadow) / .08), 0 12px 28px -12px rgb(var(--shadow) / .22)',
       },
     },

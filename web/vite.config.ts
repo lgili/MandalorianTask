@@ -8,7 +8,16 @@ const PORTA = 5176;
 
 export default defineConfig({
   plugins: [vue()],
-  resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
+  resolve: {
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, 'src') },
+      // MOCK=1 troca a camada SQL por uma em memória, para rodar a UI no
+      // navegador sem Tauri. Só existe em dev: `pnpm dev:mock`.
+      ...(process.env.MOCK
+        ? [{ find: './db.sql', replacement: path.resolve(__dirname, 'src/lib/db.mock.ts') }]
+        : []),
+    ],
+  },
   // Lê o MESMO package.json que dá a versão ao instalador. npm_package_version
   // traria a do subpacote web/, que não é a que o usuário instalou.
   define: {

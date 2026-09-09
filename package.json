@@ -11,7 +11,8 @@
     "web:build": "pnpm --dir web build",
     "typecheck": "pnpm --dir web typecheck",
     "test": "pnpm --dir web test",
-    "seed": "node scripts/seed.mjs"
+    "seed": "node scripts/seed.mjs",
+    "dev:mock": "pnpm --dir web dev:mock"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4"

@@ -28,28 +28,40 @@
 :root {
   color-scheme: light;
 
-  /* fundo levemente quente: mantém o âmbar vivo em vez de doentio */
-  --surface-1: 244 243 241;
-  --surface:   255 255 255;
-  --surface-2: 235 233 230;
-  --surface-3: 221 218 214;
+  /* Degraus de valor de verdade. Antes tudo vivia numa faixa de 4% e a
+     interface inteira parecia um wireframe. Agora: chão fundo, faixa da
+     coluna um pouco acima, card branco levantado. */
+  --surface-1: 232 229 224;   /* chão da janela */
+  --surface-2: 240 238 234;   /* faixa da coluna, painéis */
+  --surface:   255 255 255;   /* card: o objeto levantado */
+  --surface-3: 214 210 204;   /* pressionado, trilhos */
 
-  --fg:        26 25 23;
-  --fg-muted:  84 80 75;
-  --fg-subtle: 106 101 95;   /* 5.4:1 sobre surface-1 — passa AA em 11px */
+  --fg:        24 22 20;
+  --fg-muted:  92 87 81;
+  --fg-subtle: 122 116 108;
 
-  --rule:        222 219 214;
-  --rule-strong: 189 184 177;
+  --rule:        216 212 206;
+  --rule-strong: 186 180 172;
 
-  /* o único saturado: sessão rodando */
-  --vivo:      181 83 9;
-  --vivo-ink:  146 64 6;
-  --vivo-halo: 253 235 213;
+  /* O único saturado. Mais quente e mais claro que antes: a 6px o tom
+     anterior lia como marrom e a tese "cor = agora" não chegava. */
+  --vivo:      214 106 20;
+  --vivo-ink:  158 74 10;
+  --vivo-halo: 253 240 226;
 
-  /* categorias — separadas em matiz, não em saturação */
-  --trabalho: 61 90 108;
-  --reuniao:  140 90 125;
-  --admin:    122 138 143;
+  /* categorias */
+  --trabalho: 58 92 116;
+  --reuniao:  146 88 128;
+  --admin:    128 134 138;
+
+  /* Cores de projeto: codificação, não enfeite. Sem isto todo card é igual
+     e a coluna vira um muro cinza. Dessaturadas para não brigar com o âmbar. */
+  --p1: 47 103 138;
+  --p2: 154 84 122;
+  --p3: 74 122 106;
+  --p4: 168 116 42;
+  --p5: 106 96 152;
+  --p6: 138 106 88;
 
   --ok:     47 106 71;
   --warn:   141 98 20;
@@ -62,25 +74,32 @@
 .dark {
   color-scheme: dark;
 
-  --surface-1: 20 19 18;
-  --surface:   28 27 25;
-  --surface-2: 38 36 34;
-  --surface-3: 51 48 45;
+  --surface-1: 17 16 15;      /* chão */
+  --surface-2: 26 25 23;      /* faixa da coluna */
+  --surface:   36 34 32;      /* card levantado */
+  --surface-3: 52 49 46;
 
-  --fg:        237 234 230;
-  --fg-muted:  172 166 159;
-  --fg-subtle: 140 134 127;  /* 5.6:1 sobre surface-1 */
+  --fg:        240 237 232;
+  --fg-muted:  176 170 162;
+  --fg-subtle: 143 137 129;
 
-  --rule:        45 43 40;
-  --rule-strong: 68 64 60;
+  --rule:        48 45 42;
+  --rule-strong: 74 70 65;
 
-  --vivo:      240 168 104;
-  --vivo-ink:  247 195 148;
-  --vivo-halo: 61 38 15;
+  --vivo:      248 173 92;
+  --vivo-ink:  252 202 148;
+  --vivo-halo: 66 41 16;
 
-  --trabalho: 122 158 182;
-  --reuniao:  191 143 176;
-  --admin:    138 152 156;
+  --trabalho: 122 164 194;
+  --reuniao:  196 146 180;
+  --admin:    142 150 156;
+
+  --p1: 106 166 204;
+  --p2: 198 138 178;
+  --p3: 116 182 156;
+  --p4: 214 168 92;
+  --p5: 158 148 210;
+  --p6: 190 154 130;
 
   --ok:     110 190 140;
   --warn:   205 168 90;
@@ -135,5 +154,7 @@
   }
   /* valor medido */
   .med { @apply font-mono tabular-nums; }
-  .painel { @apply rounded-lg border border-rule bg-surface; }
+  .painel { @apply rounded-lg border border-rule bg-surface shadow-card; }
+  /* faixa da coluna: recuada, NÃO um retângulo branco sobre fundo branco */
+  .faixa { @apply rounded-lg border border-rule/70 bg-surface-2; }
 }

@@ -7,13 +7,17 @@ import { agora, decorrido, minutosDecorridos } from '../lib/relogio';
 
 const props = defineProps<{ card: TaskCard; rodandoDesde?: string | null }>();
 
-/** Tempo acumulado. Se está rodando, soma a sessão aberta ao vivo. */
 const tempo = computed(() => props.rodandoDesde
   ? fmtHM(props.card.minutos + minutosDecorridos(props.rodandoDesde, agora.value))
   : fmtHM(props.card.minutos));
 
 const relogio = computed(() =>
   props.rodandoDesde ? decorrido(props.rodandoDesde, agora.value) : null);
+
+/** Espinha de cor do projeto. É codificação — sem ela a coluna vira um muro. */
+const espinha = computed(() => props.rodandoDesde
+  ? 'rgb(var(--vivo))'
+  : props.card.project_color ? `rgb(var(--${props.card.project_color}))` : 'rgb(var(--rule-strong))');
 
 const dias = computed(() => {
   if (!props.card.due_at) return null;
@@ -31,50 +35,54 @@ const prazo = computed(() => {
   if (n <= 6) return `${n}d`;
   return new Date(props.card.due_at!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 });
-
-const KIND = { trabalho: '', reuniao: 'reunião', admin: 'admin' } as const;
 </script>
 
 <template>
-  <div class="cursor-grab rounded-[6px] border bg-surface px-2.5 py-2 shadow-card transition-colors
-              active:cursor-grabbing"
-    :class="rodandoDesde
-      ? 'border-vivo/60 bg-vivo-halo/40 dark:bg-vivo-halo/25'
-      : 'border-rule hover:border-rule-strong'">
+  <div class="relative grid cursor-grab grid-cols-[3px_minmax(0,1fr)] overflow-hidden rounded-[6px]
+              border bg-surface shadow-card transition-shadow hover:shadow-pop active:cursor-grabbing"
+    :class="rodandoDesde ? 'border-vivo/50' : 'border-rule'">
 
-    <div class="flex items-start gap-2">
-      <!-- o ponto só existe no que está rodando AGORA -->
-      <span v-if="rodandoDesde" class="relative mt-[5px] flex h-1.5 w-1.5 flex-none">
-        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-vivo opacity-60" />
-        <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-vivo" />
-      </span>
-      <div class="line-clamp-2 text-[13px] font-semibold leading-[1.35] tracking-[-0.006em]">
+    <!-- espinha: projeto, ou âmbar cheio quando está rodando -->
+    <div :style="{ background: espinha }" />
+
+    <div class="min-w-0 px-2.5 py-2">
+      <div class="line-clamp-2 text-[13px] font-semibold leading-[1.32] tracking-[-0.008em]">
         {{ card.title }}
+      </div>
+
+      <div v-if="card.origem_title" class="mt-1 truncate text-[10.5px] leading-tight text-fg-subtle">
+        de {{ card.origem_title }}
+      </div>
+
+      <div class="mt-2 flex items-center gap-2 font-mono text-[10px] leading-none text-fg-subtle">
+        <span v-if="card.project_code"
+          class="rounded-[3px] px-1.5 py-[3px] font-semibold"
+          :style="card.project_color
+            ? { background: `rgb(var(--${card.project_color}) / .13)`, color: `rgb(var(--${card.project_color}))` }
+            : undefined"
+          :class="!card.project_color && 'bg-surface-2 text-fg-subtle'">{{ card.project_code }}</span>
+
+        <span v-if="card.kind === 'reuniao'" class="text-reuniao">reunião</span>
+        <span v-else-if="card.kind === 'admin'">admin</span>
+
+        <span v-if="prazo" class="flex items-center gap-1 font-medium"
+          :class="dias !== null && dias <= 1 ? 'text-danger' : 'text-warn'">
+          <Clock class="h-2.5 w-2.5" />{{ prazo }}
+        </span>
+
+        <span v-if="card.sessoes > 2" class="flex items-center gap-0.5" :title="`${card.sessoes} sessões`">
+          <Repeat class="h-2.5 w-2.5" />{{ card.sessoes }}
+        </span>
+
+        <!-- a maior coisa do card é a duração: é a tese do app -->
+        <span class="ml-auto text-[12.5px] font-semibold leading-none"
+          :class="rodandoDesde ? 'text-vivo' : 'text-fg-muted'">
+          {{ relogio ?? tempo }}
+        </span>
       </div>
     </div>
 
-    <div v-if="card.origem_title" class="mt-1 truncate text-[10.5px] text-fg-subtle">
-      de <span class="text-reuniao">{{ card.origem_title }}</span>
-    </div>
-
-    <div class="mt-2 flex items-center gap-2 font-mono text-[10.5px] text-fg-subtle">
-      <span v-if="card.project_code" class="font-medium">{{ card.project_code }}</span>
-      <span v-if="KIND[card.kind]" class="text-reuniao">{{ KIND[card.kind] }}</span>
-
-      <span v-if="prazo" class="flex items-center gap-1"
-        :class="dias !== null && dias <= 1 ? 'text-danger' : 'text-warn'">
-        <Clock class="h-2.5 w-2.5" />{{ prazo }}
-      </span>
-
-      <span v-if="card.sessoes > 2" class="flex items-center gap-1" :title="`${card.sessoes} sessões`">
-        <Repeat class="h-2.5 w-2.5" />{{ card.sessoes }}
-      </span>
-
-      <!-- a maior coisa do card é a duração; é a tese do app -->
-      <span class="ml-auto font-semibold"
-        :class="rodandoDesde ? 'text-vivo' : 'text-fg-muted'">
-        {{ relogio ?? tempo }}
-      </span>
-    </div>
+    <!-- tarja âmbar contínua no que está rodando -->
+    <div v-if="rodandoDesde" class="pointer-events-none absolute inset-0 bg-vivo/[0.07]" />
   </div>
 </template>
