@@ -119,11 +119,9 @@ onMounted(() => campo.value?.focus());
 
         <template v-if="previa.projeto || previa.prazo || previa.ignorados.length">
           <span class="ml-auto flex items-center gap-2">
-            <span v-if="previa.projeto"
-              class="rounded-[3px] bg-surface-2 px-1.5 py-0.5 font-semibold text-fg-muted">
+            <span v-if="previa.projeto" class="chip bg-accent/15 text-accent-ink">
               {{ previa.projeto.code ?? previa.projeto.name }}</span>
-            <span v-if="previa.prazo"
-              class="rounded-[3px] bg-surface-2 px-1.5 py-0.5 font-semibold text-fg-muted">
+            <span v-if="previa.prazo" class="chip bg-warn/15 text-warn">
               {{ new Date(previa.prazo).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }}</span>
             <span v-for="ig in previa.ignorados" :key="ig" class="text-fg-subtle/70 line-through">{{ ig }}</span>
           </span>
@@ -143,14 +141,14 @@ onMounted(() => campo.value?.focus());
           <span class="rot">{{ g.rotulo }}</span>
           <span v-if="g.contexto" class="flex items-center gap-1.5 text-[11px] text-fg-subtle">
             <span class="text-fg-subtle/50">·</span> durante
-            <span class="font-medium text-reuniao">{{ g.contexto }}</span>
+            <span class="chip bg-reuniao/15 text-reuniao">{{ g.contexto }}</span>
           </span>
           <span class="med ml-auto text-[10.5px] text-fg-subtle">{{ g.itens.length }}</span>
         </div>
 
         <div v-for="t in g.itens" :key="t.id"
-          class="group grid grid-cols-[1fr_auto] items-center gap-3 rounded-[5px] px-2 py-[7px]
-                 transition-colors hover:bg-surface-2"
+          class="group grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-2.5 py-2
+                 transition-colors hover:bg-surface"
           :class="enfileirados.has(t.id) && 'opacity-55'">
           <div class="flex min-w-0 items-baseline gap-2">
             <span class="truncate text-[13.5px] leading-snug">{{ t.title }}</span>
@@ -158,7 +156,9 @@ onMounted(() => campo.value?.focus());
           </div>
 
           <div class="flex flex-none items-center gap-2.5">
-            <span v-if="t.project_code" class="med text-[10.5px] text-fg-subtle">{{ t.project_code }}</span>
+            <span v-if="t.project_code" class="chip"
+              :style="t.project_color ? { background: `rgb(var(--${t.project_color}) / .15)`, color: `rgb(var(--${t.project_color}))` } : undefined"
+              :class="!t.project_color && 'bg-surface-3 text-fg-muted'">{{ t.project_code }}</span>
             <span v-if="t.due_at" class="med text-[10.5px] text-warn">
               {{ new Date(t.due_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }}</span>
 

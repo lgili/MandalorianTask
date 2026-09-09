@@ -74,7 +74,7 @@ function ajusta(alvo: EventTarget | null, set: (m: number) => void, ler: () => n
         </button>
         <div class="flex-1" />
         <button class="btn" @click="emit('fechar')">Cancelar</button>
-        <button class="btn btn-vivo" :disabled="ate <= de"
+        <button class="btn btn-accent" :disabled="ate <= de"
           @click="emit('salvar', sessao.id, { started_at: utcDe(dia, de), ended_at: utcDe(dia, ate) })">
           Salvar
         </button>

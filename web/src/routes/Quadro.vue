@@ -4,7 +4,7 @@ import { Plus } from 'lucide-vue-next';
 import Card from '../components/Card.vue';
 import type { TaskCard, TaskStatus } from '../lib/types';
 import * as api from '../lib/db';
-import { carregaProjetos, carregaQuadro, move, rodando, tarefas } from '../lib/store';
+import { carregaProjetos, carregaQuadro, move, pausa, rodando, tarefas } from '../lib/store';
 import { toast } from '../lib/toast';
 import { fmtHM } from '../lib/tempo';
 
@@ -67,24 +67,23 @@ onMounted(async () => { await carregaProjetos(); await carregaQuadro(); });
       <button v-else class="btn" @click="criando = true">
         <Plus class="h-3.5 w-3.5" />Nova na fila
       </button>
-      <span class="ml-auto font-mono text-[10.5px] text-fg-muted">
-        arraste entre colunas · <span class="text-vivo">Fazendo</span> começa a contar
+      <span class="ml-auto font-mono text-[10.5px] text-fg-subtle">
+        ▶ no card começa a contar · arraste para mover
       </span>
     </div>
 
     <div class="grid min-h-0 flex-1 grid-cols-3 gap-3 overflow-hidden px-4 pb-4">
       <div v-for="col in colunas" :key="col.id"
         class="faixa flex min-h-0 flex-col transition-colors"
-        :class="sobre === col.id && '!border-vivo !bg-vivo-halo'"
+        :class="sobre === col.id && '!ring-accent/60 !bg-accent/10'"
         @dragover.prevent="sobre = col.id" @dragleave="sobre = null" @drop.prevent="solta(col.id)">
 
         <div class="flex flex-none items-center gap-2 px-2.5 pb-1.5 pt-2.5">
           <span class="rot !text-fg-muted">{{ col.label }}</span>
-          <span class="med rounded-full bg-surface-3/70 px-1.5 py-[1px] text-[10px] font-semibold
-                       leading-[15px] text-fg-muted">{{ col.itens.length }}</span>
+          <span class="chip bg-surface-3 text-fg-muted">{{ col.itens.length }}</span>
           <!-- três em curso, uma rodando: a distinção que o app faz -->
           <span v-if="col.id === 'fazendo' && rodando"
-            class="flex items-center gap-1 text-[10px] font-semibold text-vivo">
+            class="chip bg-vivo/15 text-vivo-ink gap-1">
             <span class="h-1.5 w-1.5 rounded-full bg-vivo" />1 rodando
           </span>
           <span class="med ml-auto text-[11px] font-semibold text-fg-muted">{{ totalColuna(col.itens) }}</span>
@@ -94,7 +93,8 @@ onMounted(async () => { await carregaProjetos(); await carregaQuadro(); });
           <div v-for="t in col.itens" :key="t.id" draggable="true"
             :class="arrastando === t.id && 'opacity-40'"
             @dragstart="arrastando = t.id" @dragend="arrastando = null; sobre = null">
-            <Card :card="t" :rodando-desde="desde(t)" />
+            <Card :card="t" :rodando-desde="desde(t)"
+                  @iniciar="move($event, 'fazendo')" @pausar="pausa()" @concluir="move($event, 'feito')" />
           </div>
           <p v-if="!col.itens.length" class="px-1 py-2 text-[11.5px] text-fg-subtle">
             {{ col.id === 'fila' ? 'Puxe do backlog.' : 'vazio' }}

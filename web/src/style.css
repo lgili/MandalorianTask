@@ -1,160 +1,167 @@
-/* Fontes auto-hospedadas. Antes era @import do Google Fonts — num app Tauri
-   isso quebra offline: sem rede a identidade inteira troca para Segoe UI e os
-   números deixam de ser tabulares. Só os pesos usados. */
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/500.css';
-@import '@fontsource/ibm-plex-sans/600.css';
-@import '@fontsource/ibm-plex-sans/700.css';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/500.css';
-@import '@fontsource/ibm-plex-mono/600.css';
+/* Fontes auto-hospedadas (variáveis: um arquivo cada). */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ════════════════════════════════════════════════════════════════════════
-   PALETA
+   TEMAS
 
-   Uma regra explica tudo: COR SATURADA SIGNIFICA "AGORA".
-   O âmbar aparece exclusivamente no que está rodando neste instante. Ele não
-   é a cor do app, não está na navegação, não está em botão primário. Se a
-   tela está inteira neutra, nada está correndo — e isso se lê de longe.
-
-   Sem teal e sem terracota de propósito: é o par de acento que toda IA gera,
-   e os três críticos apontaram o mesmo. As categorias usam ardósia, ameixa e
-   cinza, que se separam bem entre si e não competem com o âmbar.
+   Três direções visuais, trocáveis em Ajustes. Todas partilham a mesma
+   gramática de papéis:
+     surface-1  chão da janela        accent  ação primária, nav ativa, foco
+     surface-2  faixas, sidebar       vivo    a sessão que roda AGORA
+     surface    card (levantado)      p1..p6  cor por projeto
+     surface-3  pressionado/hover
    ════════════════════════════════════════════════════════════════════════ */
-:root {
-  color-scheme: light;
 
-  /* Degraus de valor de verdade. Antes tudo vivia numa faixa de 4% e a
-     interface inteira parecia um wireframe. Agora: chão fundo, faixa da
-     coluna um pouco acima, card branco levantado. */
-  --surface-1: 232 229 224;   /* chão da janela */
-  --surface-2: 240 238 234;   /* faixa da coluna, painéis */
-  --surface:   255 255 255;   /* card: o objeto levantado */
-  --surface-3: 214 210 204;   /* pressionado, trilhos */
+/* ── NOITE (padrão): escuro profundo, índigo. ──────────────────────────── */
+:root, [data-theme="noite"] {
+  color-scheme: dark;
+  --surface-1: 11 13 18;
+  --surface-2: 17 20 27;
+  --surface:   24 28 37;
+  --surface-3: 34 39 52;
 
-  --fg:        24 22 20;
-  --fg-muted:  92 87 81;
-  --fg-subtle: 122 116 108;
+  --fg:        237 240 246;
+  --fg-muted:  160 168 186;
+  --fg-subtle: 110 118 138;
 
-  --rule:        216 212 206;
-  --rule-strong: 186 180 172;
+  --rule:        34 39 52;
+  --rule-strong: 50 57 76;
 
-  /* O único saturado. Mais quente e mais claro que antes: a 6px o tom
-     anterior lia como marrom e a tese "cor = agora" não chegava. */
-  --vivo:      214 106 20;
-  --vivo-ink:  158 74 10;
-  --vivo-halo: 253 240 226;
+  --accent:      124 124 247;
+  --accent-ink:  164 164 255;
+  --accent-halo: 124 124 247;
 
-  /* categorias */
-  --trabalho: 58 92 116;
-  --reuniao:  146 88 128;
-  --admin:    128 134 138;
+  --vivo:      74 222 128;
+  --vivo-ink:  134 239 172;
+  --vivo-halo: 74 222 128;
 
-  /* Cores de projeto: codificação, não enfeite. Sem isto todo card é igual
-     e a coluna vira um muro cinza. Dessaturadas para não brigar com o âmbar. */
-  --p1: 47 103 138;
-  --p2: 154 84 122;
-  --p3: 74 122 106;
-  --p4: 168 116 42;
-  --p5: 106 96 152;
-  --p6: 138 106 88;
+  --trabalho: 108 141 255;
+  --reuniao:  242 126 198;
+  --admin:    139 147 167;
 
-  --ok:     47 106 71;
-  --warn:   141 98 20;
-  --danger: 163 53 38;
+  --p1: 90 169 255;  --p2: 242 126 198;  --p3: 69 209 154;
+  --p4: 255 180 84;  --p5: 182 156 255;  --p6: 255 138 107;
 
+  --ok: 74 222 128;  --warn: 250 204 21;  --danger: 248 113 113;
   --on-accent: 255 255 255;
-  --shadow: 26 25 23;
+  --shadow: 0 0 0;
+  --glow: 124 124 247;
 }
 
-.dark {
+/* ── CLARO: light moderno, frio, índigo. ───────────────────────────────── */
+[data-theme="claro"] {
+  color-scheme: light;
+  --surface-1: 243 244 249;
+  --surface-2: 236 238 245;
+  --surface:   255 255 255;
+  --surface-3: 226 229 238;
+
+  --fg:        20 22 28;
+  --fg-muted:  91 98 117;
+  --fg-subtle: 138 145 165;
+
+  --rule:        228 231 239;
+  --rule-strong: 206 211 224;
+
+  --accent:      91 91 214;
+  --accent-ink:  67 67 184;
+  --accent-halo: 91 91 214;
+
+  --vivo:      22 163 74;
+  --vivo-ink:  21 128 61;
+  --vivo-halo: 22 163 74;
+
+  --trabalho: 79 105 232;
+  --reuniao:  219 39 119;
+  --admin:    120 128 148;
+
+  --p1: 59 130 246;  --p2: 219 39 119;  --p3: 5 150 105;
+  --p4: 217 119 6;   --p5: 124 58 237;  --p6: 234 88 12;
+
+  --ok: 22 163 74;  --warn: 202 138 4;  --danger: 220 38 38;
+  --on-accent: 255 255 255;
+  --shadow: 30 34 60;
+  --glow: 91 91 214;
+}
+
+/* ── NEON: escuro violeta, coral/magenta. ──────────────────────────────── */
+[data-theme="neon"] {
   color-scheme: dark;
+  --surface-1: 13 10 20;
+  --surface-2: 20 16 30;
+  --surface:   29 23 40;
+  --surface-3: 42 34 58;
 
-  --surface-1: 17 16 15;      /* chão */
-  --surface-2: 26 25 23;      /* faixa da coluna */
-  --surface:   36 34 32;      /* card levantado */
-  --surface-3: 52 49 46;
+  --fg:        245 240 250;
+  --fg-muted:  178 168 196;
+  --fg-subtle: 126 116 146;
 
-  --fg:        240 237 232;
-  --fg-muted:  176 170 162;
-  --fg-subtle: 143 137 129;
+  --rule:        42 34 58;
+  --rule-strong: 62 52 84;
 
-  --rule:        48 45 42;
-  --rule-strong: 74 70 65;
+  --accent:      240 80 127;
+  --accent-ink:  255 132 168;
+  --accent-halo: 240 80 127;
 
-  --vivo:      248 173 92;
-  --vivo-ink:  252 202 148;
-  --vivo-halo: 66 41 16;
+  --vivo:      34 227 155;
+  --vivo-ink:  110 244 194;
+  --vivo-halo: 34 227 155;
 
-  --trabalho: 122 164 194;
-  --reuniao:  196 146 180;
-  --admin:    142 150 156;
+  --trabalho: 155 123 255;
+  --reuniao:  255 79 163;
+  --admin:    140 130 160;
 
-  --p1: 106 166 204;
-  --p2: 198 138 178;
-  --p3: 116 182 156;
-  --p4: 214 168 92;
-  --p5: 158 148 210;
-  --p6: 190 154 130;
+  --p1: 92 200 255;  --p2: 255 79 163;  --p3: 79 227 193;
+  --p4: 255 209 102; --p5: 155 123 255; --p6: 255 122 89;
 
-  --ok:     110 190 140;
-  --warn:   205 168 90;
-  --danger: 224 130 114;
-
-  --on-accent: 26 20 12;
+  --ok: 34 227 155;  --warn: 255 209 102;  --danger: 255 107 107;
+  --on-accent: 255 255 255;
   --shadow: 0 0 0;
+  --glow: 240 80 127;
 }
 
 @layer base {
+  html { font-feature-settings: 'cv11', 'ss01'; }
   body {
     @apply bg-surface-1 text-fg font-sans text-[13.5px] antialiased;
-    /* o relógio muda a cada segundo: sem tabular a largura pisca e puxa o olho */
     font-variant-numeric: tabular-nums;
   }
   :focus-visible {
-    @apply outline-none ring-2 ring-vivo/70 ring-offset-1 ring-offset-surface-1 rounded-[3px];
+    @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-surface-1 rounded-md;
   }
-  ::selection { @apply bg-vivo/25; }
+  ::selection { @apply bg-accent/30; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { @apply rounded-full bg-surface-3; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
 }
 
-/* ════════════════════════════════════════════════════════════════════════
-   COMPONENTES
-
-   Regra tipográfica que resolve quase toda decisão sozinha:
-     MONO carrega o que foi MEDIDO  (durações, relógios, códigos, contadores)
-     SANS carrega o que foi ESCRITO (títulos de tarefa, notas, nomes)
-   Nada de mono decorativo em título; nada de sans em número.
-
-   Nada nesta interface passa de 22px. A maior coisa da tela é uma duração —
-   isso é a tese, e é o que impede o app de virar site.
-   ════════════════════════════════════════════════════════════════════════ */
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-[5px] border border-rule-strong bg-surface
-           px-2.5 py-1 text-[12.5px] font-medium text-fg-muted transition-colors
-           hover:border-fg-subtle hover:text-fg
-           disabled:opacity-40 disabled:pointer-events-none;
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-rule-strong/70 bg-surface
+           px-3 py-1.5 text-[12.5px] font-medium text-fg-muted shadow-card transition
+           hover:border-rule-strong hover:text-fg hover:bg-surface-3/60
+           active:translate-y-px disabled:opacity-40 disabled:pointer-events-none;
   }
-  .btn-vivo {
-    @apply border-vivo bg-vivo text-on-accent hover:border-vivo hover:text-on-accent
-           hover:brightness-105;
+  .btn-accent {
+    @apply border-transparent bg-accent text-on-accent shadow-glow hover:bg-accent hover:text-on-accent
+           hover:brightness-110;
   }
+  .btn-ghost { @apply border-transparent bg-transparent shadow-none hover:bg-surface-3/60; }
   .inp {
-    @apply w-full rounded-[5px] border border-rule-strong bg-surface px-2.5 py-1.5
-           text-[13px] text-fg outline-none placeholder:text-fg-subtle
-           focus:border-vivo;
+    @apply w-full rounded-lg border border-rule-strong/70 bg-surface px-3 py-2 text-[13px] text-fg
+           outline-none transition placeholder:text-fg-subtle
+           focus:border-accent focus:ring-2 focus:ring-accent/25;
   }
-  /* rótulo de instrumento: cabeçalho de coluna, separador, legenda */
   .rot {
-    @apply font-mono text-[10.5px] font-semibold uppercase tracking-[0.11em] text-fg-subtle;
+    @apply font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-fg-subtle;
   }
-  /* valor medido */
   .med { @apply font-mono tabular-nums; }
-  .painel { @apply rounded-lg border border-rule bg-surface shadow-card; }
-  /* faixa da coluna: recuada, NÃO um retângulo branco sobre fundo branco */
-  .faixa { @apply rounded-lg border border-rule/70 bg-surface-2; }
+  .painel { @apply rounded-xl border border-rule bg-surface shadow-card; }
+  .faixa  { @apply rounded-xl bg-surface-2/80 ring-1 ring-inset ring-rule/60; }
+  .chip   { @apply inline-flex items-center rounded-md px-1.5 py-[3px] font-mono text-[10px] font-semibold leading-none; }
 }

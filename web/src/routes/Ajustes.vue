@@ -5,6 +5,10 @@ import * as api from '../lib/db';
 import { toast } from '../lib/toast';
 import { carregaProjetos, projetos } from '../lib/store';
 import { GRAO_MIN, tzAtual } from '../lib/tempo';
+import { TEMAS, aplicaTema, temaAtual } from '../lib/theme';
+
+const tema = ref(temaAtual());
+function escolheTema(t: typeof tema.value): void { tema.value = t; aplicaTema(t); }
 
 const nome = ref('');
 const codigo = ref('');
@@ -34,6 +38,18 @@ onMounted(carregaProjetos);
   <div class="min-h-0 flex-1 overflow-y-auto">
     <div class="flex max-w-[620px] flex-col gap-4 px-4 pb-10 pt-3">
       <div class="painel">
+        <div class="border-b border-rule px-4 py-2.5"><span class="rot">Aparência</span></div>
+        <div class="grid grid-cols-3 gap-2 p-3">
+          <button v-for="t in TEMAS" :key="t.id" @click="escolheTema(t.id)"
+            class="rounded-xl border p-3 text-left transition"
+            :class="tema === t.id ? 'border-accent bg-accent/10 shadow-glow' : 'border-rule hover:border-rule-strong'">
+            <div class="text-[13px] font-semibold">{{ t.nome }}</div>
+            <div class="text-[11px] text-fg-subtle">{{ t.desc }}</div>
+          </button>
+        </div>
+      </div>
+
+      <div class="painel">
         <div class="border-b border-rule px-4 py-2.5">
           <span class="rot">Projetos</span>
           <span class="ml-2 text-[10.5px] text-fg-subtle">use <code class="med">#código</code> na captura</span>
@@ -51,7 +67,7 @@ onMounted(carregaProjetos);
           <div class="flex items-center gap-2 border-t border-rule py-2.5">
             <input class="inp max-w-[220px]" v-model="nome" placeholder="Nome" @keydown.enter="cria">
             <input class="inp max-w-[110px]" v-model="codigo" placeholder="Código" @keydown.enter="cria">
-            <button class="btn btn-vivo" @click="cria"><Plus class="h-3.5 w-3.5" />Criar</button>
+            <button class="btn btn-accent" @click="cria"><Plus class="h-3.5 w-3.5" />Criar</button>
           </div>
         </div>
       </div>

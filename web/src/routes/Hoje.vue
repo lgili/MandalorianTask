@@ -93,7 +93,7 @@ onMounted(() => carregaDia());
       <div v-for="l in linhas" :key="l.s.id"
         class="group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[5px] border-b
                border-rule px-2 py-[7px] transition-colors hover:bg-surface"
-        :class="l.aberta && 'bg-vivo-halo'">
+        :class="l.aberta && 'bg-vivo/10'">
         <span class="med text-[11px] text-fg-subtle">
           {{ hhmm(l.s.started_at) }}–{{ l.s.ended_at ? hhmm(l.s.ended_at) : '…' }}
         </span>
@@ -114,7 +114,7 @@ onMounted(() => carregaDia());
             <Pencil class="h-3.5 w-3.5" />
           </button>
           <span class="med w-[68px] text-right text-[13px] font-semibold"
-            :class="l.aberta ? 'text-vivo' : 'text-fg-muted'">{{ l.dur }}</span>
+            :class="l.aberta ? 'text-vivo-ink' : 'text-fg-muted'">{{ l.dur }}</span>
         </div>
       </div>
       </div>

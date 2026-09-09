@@ -1,10 +1,8 @@
-/** Tokens semânticos como triplas RGB, para o <alpha-value> do Tailwind funcionar.
- *  Os valores ficam em src/style.css (:root claro, .dark escuro). */
 const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: 'class',
+  darkMode: ['selector', '[data-theme="noite"], [data-theme="neon"], :root:not([data-theme="claro"])'],
   content: ['./index.html', './src/**/*.{vue,ts}'],
   theme: {
     extend: {
@@ -12,29 +10,24 @@ export default {
         surface: { DEFAULT: v('surface'), 1: v('surface-1'), 2: v('surface-2'), 3: v('surface-3') },
         fg: { DEFAULT: v('fg'), muted: v('fg-muted'), subtle: v('fg-subtle') },
         rule: { DEFAULT: v('rule'), strong: v('rule-strong') },
-
-        // o único saturado: significa "rodando agora"
+        accent: { DEFAULT: v('accent'), ink: v('accent-ink'), halo: v('accent-halo') },
         vivo: { DEFAULT: v('vivo'), ink: v('vivo-ink'), halo: v('vivo-halo') },
-
         p1: v('p1'), p2: v('p2'), p3: v('p3'), p4: v('p4'), p5: v('p5'), p6: v('p6'),
-
-        trabalho: v('trabalho'),
-        reuniao: v('reuniao'),
-        admin: v('admin'),
-
-        ok: v('ok'),
-        warn: v('warn'),
-        danger: v('danger'),
+        trabalho: v('trabalho'), reuniao: v('reuniao'), admin: v('admin'),
+        ok: v('ok'), warn: v('warn'), danger: v('danger'),
         'on-accent': v('on-accent'),
       },
       fontFamily: {
-        sans: ['"IBM Plex Sans"', 'system-ui', 'Segoe UI', 'sans-serif'],
-        mono: ['"IBM Plex Mono"', 'ui-monospace', 'Consolas', 'monospace'],
+        sans: ['"Inter Variable"', 'Inter', 'system-ui', 'Segoe UI', 'sans-serif'],
+        mono: ['"JetBrains Mono Variable"', '"JetBrains Mono"', 'ui-monospace', 'Consolas', 'monospace'],
       },
       boxShadow: {
-        card: '0 1px 1px rgb(var(--shadow) / .05), 0 1px 3px rgb(var(--shadow) / .07)',
-        pop: '0 4px 6px -2px rgb(var(--shadow) / .08), 0 12px 28px -12px rgb(var(--shadow) / .22)',
+        card: '0 1px 2px rgb(var(--shadow) / .18), 0 1px 1px rgb(var(--shadow) / .08)',
+        pop: '0 2px 6px rgb(var(--shadow) / .2), 0 16px 40px -16px rgb(var(--shadow) / .45)',
+        glow: '0 0 0 1px rgb(var(--glow) / .35), 0 6px 20px -6px rgb(var(--glow) / .55)',
+        live: '0 0 0 1px rgb(var(--vivo) / .45), 0 0 24px -4px rgb(var(--vivo) / .45)',
       },
+      borderRadius: { xl: '12px', '2xl': '16px' },
     },
   },
   plugins: [],
