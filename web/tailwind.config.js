@@ -2,7 +2,7 @@ const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: ['selector', '[data-theme="noite"], [data-theme="neon"], :root:not([data-theme="claro"])'],
+  darkMode: ['selector', ':root:not([data-theme="claro"])'],
   content: ['./index.html', './src/**/*.{vue,ts}'],
   theme: {
     extend: {
@@ -18,7 +18,8 @@ export default {
         'on-accent': v('on-accent'),
       },
       fontFamily: {
-        sans: ['"Inter Variable"', 'Inter', 'system-ui', 'Segoe UI', 'sans-serif'],
+        sans: ['"Instrument Sans Variable"', '"Instrument Sans"', 'system-ui', 'Segoe UI', 'sans-serif'],
+        serif: ['"Newsreader Variable"', 'Newsreader', 'Georgia', 'serif'],
         mono: ['"JetBrains Mono Variable"', '"JetBrains Mono"', 'ui-monospace', 'Consolas', 'monospace'],
       },
       boxShadow: {

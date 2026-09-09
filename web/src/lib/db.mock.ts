@@ -7,7 +7,7 @@
 // A API é idêntica à de db.ts — o Vite troca um pelo outro por alias.
 
 import type {
-  Project, Session, SessionCard, Task, TaskCard, TaskKind, TaskStatus, Totais,
+  Outcome, Project, Session, SessionCard, Task, TaskCard, TaskKind, TaskStatus, Totais, Transition,
 } from './types';
 import { dayRangeUtc, type DayKey } from './tempo';
 
@@ -34,7 +34,8 @@ let seqT = 0;
 const T = (o: Partial<Task> & { title: string }): Task => ({
   id: ++seqT, project_id: null, kind: 'trabalho', status: 'backlog', pos: seqT,
   due_at: null, notes: null, created_at: iso(em(5, 10)), origem_id: null,
-  queued_at: null, started_at: null, done_at: null, archived_at: null, ...o,
+  queued_at: null, started_at: null, done_at: null, archived_at: null,
+  outcome: null, outcome_note: null, ...o,
 });
 
 const dfmea = T({ title: 'Revisão DFMEA — Flyback rev C', kind: 'reuniao', project_id: 1,
@@ -71,13 +72,13 @@ const tarefas: Task[] = [
   T({ title: 'Revisar layout do snubber RCD', project_id: 1, status: 'fazendo',
       created_at: iso(em(10, 11)), queued_at: iso(em(4, 9)), started_at: iso(em(4, 13)) }),
 
-  T({ title: 'Ensaio EMC pré-compliance', project_id: 1, status: 'feito',
+  T({ title: 'Ensaio EMC pré-compliance', project_id: 1, status: 'feito', outcome: 'entregue',
       created_at: iso(em(12, 9)), started_at: iso(em(12, 9)), done_at: iso(em(6, 17)) }),
-  T({ title: 'Simulação do snubber no LTspice', project_id: 1, status: 'feito',
+  T({ title: 'Simulação do snubber no LTspice', project_id: 1, status: 'feito', outcome: 'entregue',
       created_at: iso(em(14, 9)), started_at: iso(em(11, 9)), done_at: iso(em(10, 17)) }),
-  T({ title: 'Cotação de conectores AC', project_id: 2, status: 'feito',
+  T({ title: 'Cotação de conectores AC', project_id: 2, status: 'feito', outcome: 'repassada',
       created_at: iso(em(8, 9)), started_at: iso(em(6, 16)), done_at: iso(em(5, 17)) }),
-  T({ title: 'Organizar datasheets da bancada 2', project_id: 3, kind: 'admin', status: 'feito',
+  T({ title: 'Organizar datasheets da bancada 2', project_id: 3, kind: 'admin', status: 'feito', outcome: 'descartada',
       created_at: iso(em(7, 9)), started_at: iso(em(5, 17)), done_at: iso(em(5, 18)) }),
   T({ title: 'Daily do time de hardware', kind: 'reuniao', status: 'feito',
       created_at: iso(em(1, 8)), started_at: iso(em(1, 9)), done_at: iso(em(1, 9, 20)) }),
@@ -103,12 +104,19 @@ for (let d = 14; d >= 0; d--) {   // inclui HOJE: sem isso a tela Hoje abre vazi
   const dia = em(d, 9);
   if (dia.getDay() === 0 || dia.getDay() === 6) continue;
   const alvo = rnd() > 0.5 ? termico : snubber;
-  const cabe = (h: number) => d > 0 || h < AGORA.getHours() - 1;
-  if (cabe(11)) sessoes.push(S(alvo.id, em(d, 10, Math.floor(rnd() * 40)), 70 + Math.floor(rnd() * 60)));
-  if (cabe(15)) sessoes.push(S(alvo.id, em(d, 14, Math.floor(rnd() * 30)), 80 + Math.floor(rnd() * 60)));
   const reuniao = tarefas.filter((t) => t.kind === 'reuniao')[Math.floor(rnd() * 2)];
-  if (cabe(10)) sessoes.push(S(reuniao.id, em(d, 9), 25 + Math.floor(rnd() * 55)));
-  if (rnd() > 0.6 && cabe(18)) sessoes.push(S(tarefas.find((t) => t.kind === 'admin')!.id, em(d, 17), 30));
+  if (d > 0) {
+    sessoes.push(S(alvo.id, em(d, 10, Math.floor(rnd() * 40)), 70 + Math.floor(rnd() * 60)));
+    sessoes.push(S(alvo.id, em(d, 14, Math.floor(rnd() * 30)), 80 + Math.floor(rnd() * 60)));
+    sessoes.push(S(reuniao.id, em(d, 9), 25 + Math.floor(rnd() * 55)));
+    if (rnd() > 0.6) sessoes.push(S(tarefas.find((t) => t.kind === 'admin')!.id, em(d, 17), 30));
+  } else {
+    // hoje: encaixa antes de AGORA, qualquer que seja a hora
+    const antes = (minAtras: number) => new Date(AGORA.getTime() - minAtras * 60000);
+    sessoes.push(S(reuniao.id, antes(230), 40));
+    sessoes.push(S(alvo.id, antes(180), 95));
+    sessoes.push(S(snubber.id, antes(75), 25));
+  }
 }
 // Toda tarefa já trabalhada precisa de tempo: uma coluna inteira de "0h00"
 // faz o card parecer quebrado, e esconde justamente o número que é a tese.
@@ -158,7 +166,40 @@ export async function capturaTarefa(title: string, project_id: number | null = n
   tarefas.unshift(t);
   return t.id;
 }
-export async function updateTask(): Promise<void> {}
+export async function updateTask(id: number, patch: Partial<Task>): Promise<void> {
+  const t = tarefas.find((x) => x.id === id); if (t) Object.assign(t, patch);
+}
+export async function concluiTarefa(id: number, outcome: Outcome, nota: string | null = null): Promise<void> {
+  await moveTask(id, 'feito');
+  const t = tarefas.find((x) => x.id === id); if (t) { t.outcome = outcome; t.outcome_note = nota; }
+}
+export async function transicoes(taskId: number): Promise<Transition[]> {
+  const t = tarefas.find((x) => x.id === taskId); if (!t) return [];
+  const out: Transition[] = [{ id: 1, task_id: taskId, de: null, para: 'backlog', at: t.created_at }];
+  if (t.queued_at) out.push({ id: 2, task_id: taskId, de: 'backlog', para: 'fila', at: t.queued_at });
+  if (t.started_at) out.push({ id: 3, task_id: taskId, de: 'fila', para: 'fazendo', at: t.started_at });
+  if (t.done_at) out.push({ id: 4, task_id: taskId, de: 'fazendo', para: 'feito', at: t.done_at });
+  return out;
+}
+export async function sessoesDaTarefa(taskId: number): Promise<Session[]> {
+  return sessoes.filter((s) => s.task_id === taskId).sort((a, b) => b.started_at.localeCompare(a.started_at));
+}
+export async function desfechos(fromUtc: string, toUtc: string): Promise<Array<{ outcome: Outcome | null; n: number }>> {
+  const acc = new Map<Outcome | null, number>();
+  for (const t of tarefas) if (t.done_at && t.done_at >= fromUtc && t.done_at < toUtc)
+    acc.set(t.outcome, (acc.get(t.outcome) ?? 0) + 1);
+  return [...acc].map(([outcome, n]) => ({ outcome, n })).sort((a, b) => b.n - a.n);
+}
+export async function concluidasPorDia(dias: number): Promise<Array<{ dia: string; n: number }>> {
+  const acc = new Map<string, number>();
+  const lim = new Date(AGORA.getTime() - dias * 86400000).toISOString();
+  for (const t of tarefas) if (t.done_at && t.done_at >= lim) {
+    const d = new Date(t.done_at);
+    const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    acc.set(k, (acc.get(k) ?? 0) + 1);
+  }
+  return [...acc].map(([dia, n]) => ({ dia, n })).sort((a, b) => a.dia.localeCompare(b.dia));
+}
 export async function deleteTask(id: number): Promise<void> {
   const i = tarefas.findIndex((t) => t.id === id);
   if (i >= 0) tarefas.splice(i, 1);

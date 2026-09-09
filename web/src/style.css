@@ -1,5 +1,5 @@
-/* Fontes auto-hospedadas (variáveis: um arquivo cada). */
-@import '@fontsource-variable/inter';
+@import '@fontsource-variable/instrument-sans';
+@import '@fontsource-variable/newsreader';
 @import '@fontsource-variable/jetbrains-mono';
 
 @tailwind base;
@@ -7,133 +7,77 @@
 @tailwind utilities;
 
 /* ════════════════════════════════════════════════════════════════════════
-   TEMAS
-
-   Três direções visuais, trocáveis em Ajustes. Todas partilham a mesma
-   gramática de papéis:
-     surface-1  chão da janela        accent  ação primária, nav ativa, foco
-     surface-2  faixas, sidebar       vivo    a sessão que roda AGORA
-     surface    card (levantado)      p1..p6  cor por projeto
-     surface-3  pressionado/hover
+   TEMAS — papéis compartilhados:
+     surface-1 chão · surface-2 sidebar/faixas · surface card · surface-3 hover
+     accent    ação primária E a sessão que roda (cor saturada = agora)
+     p1..p6    cor por projeto · trabalho/reuniao/admin tipos
    ════════════════════════════════════════════════════════════════════════ */
 
-/* ── NOITE (padrão): escuro profundo, índigo. ──────────────────────────── */
-:root, [data-theme="noite"] {
+/* ── LEDGER (padrão): quase-preto, teal, serif editorial. ──────────────── */
+:root, [data-theme="ledger"] {
   color-scheme: dark;
-  --surface-1: 11 13 18;
-  --surface-2: 17 20 27;
-  --surface:   24 28 37;
-  --surface-3: 34 39 52;
+  --surface-1: 11 14 15;
+  --surface-2: 14 17 19;
+  --surface:   20 24 25;
+  --surface-3: 28 34 36;
 
-  --fg:        237 240 246;
-  --fg-muted:  160 168 186;
-  --fg-subtle: 110 118 138;
+  --fg:        232 230 225;
+  --fg-muted:  154 161 166;
+  --fg-subtle: 110 119 124;
 
-  --rule:        34 39 52;
-  --rule-strong: 50 57 76;
+  --rule:        30 35 38;
+  --rule-strong: 46 54 57;
 
-  --accent:      124 124 247;
-  --accent-ink:  164 164 255;
-  --accent-halo: 124 124 247;
+  --accent:      46 196 182;
+  --accent-ink:  95 211 197;
+  --vivo:        46 196 182;
+  --vivo-ink:    95 211 197;
 
-  --vivo:      74 222 128;
-  --vivo-ink:  134 239 172;
-  --vivo-halo: 74 222 128;
+  --trabalho: 108 180 255;
+  --reuniao:  240 179 92;
+  --admin:    139 146 151;
 
-  --trabalho: 108 141 255;
-  --reuniao:  242 126 198;
-  --admin:    139 147 167;
+  --p1: 85 214 160;  --p2: 240 179 92;  --p3: 108 180 255;
+  --p4: 179 156 255; --p5: 242 139 130; --p6: 95 211 197;
 
-  --p1: 90 169 255;  --p2: 242 126 198;  --p3: 69 209 154;
-  --p4: 255 180 84;  --p5: 182 156 255;  --p6: 255 138 107;
-
-  --ok: 74 222 128;  --warn: 250 204 21;  --danger: 248 113 113;
-  --on-accent: 255 255 255;
+  --ok: 85 214 160;  --warn: 240 179 92;  --danger: 242 139 130;
+  --on-accent: 6 32 31;
   --shadow: 0 0 0;
-  --glow: 124 124 247;
+  --glow: 46 196 182;
 }
 
-/* ── CLARO: light moderno, frio, índigo. ───────────────────────────────── */
+/* ── NOITE: escuro azulado, índigo. ────────────────────────────────────── */
+[data-theme="noite"] {
+  color-scheme: dark;
+  --surface-1: 11 13 18; --surface-2: 17 20 27; --surface: 24 28 37; --surface-3: 34 39 52;
+  --fg: 237 240 246; --fg-muted: 160 168 186; --fg-subtle: 110 118 138;
+  --rule: 34 39 52; --rule-strong: 50 57 76;
+  --accent: 124 124 247; --accent-ink: 164 164 255; --vivo: 74 222 128; --vivo-ink: 134 239 172;
+  --trabalho: 108 141 255; --reuniao: 242 126 198; --admin: 139 147 167;
+  --p1: 90 169 255; --p2: 242 126 198; --p3: 69 209 154; --p4: 255 180 84; --p5: 182 156 255; --p6: 255 138 107;
+  --ok: 74 222 128; --warn: 250 204 21; --danger: 248 113 113;
+  --on-accent: 255 255 255; --shadow: 0 0 0; --glow: 124 124 247;
+}
+
+/* ── CLARO: light frio. ────────────────────────────────────────────────── */
 [data-theme="claro"] {
   color-scheme: light;
-  --surface-1: 243 244 249;
-  --surface-2: 236 238 245;
-  --surface:   255 255 255;
-  --surface-3: 226 229 238;
-
-  --fg:        20 22 28;
-  --fg-muted:  91 98 117;
-  --fg-subtle: 138 145 165;
-
-  --rule:        228 231 239;
-  --rule-strong: 206 211 224;
-
-  --accent:      91 91 214;
-  --accent-ink:  67 67 184;
-  --accent-halo: 91 91 214;
-
-  --vivo:      22 163 74;
-  --vivo-ink:  21 128 61;
-  --vivo-halo: 22 163 74;
-
-  --trabalho: 79 105 232;
-  --reuniao:  219 39 119;
-  --admin:    120 128 148;
-
-  --p1: 59 130 246;  --p2: 219 39 119;  --p3: 5 150 105;
-  --p4: 217 119 6;   --p5: 124 58 237;  --p6: 234 88 12;
-
-  --ok: 22 163 74;  --warn: 202 138 4;  --danger: 220 38 38;
-  --on-accent: 255 255 255;
-  --shadow: 30 34 60;
-  --glow: 91 91 214;
-}
-
-/* ── NEON: escuro violeta, coral/magenta. ──────────────────────────────── */
-[data-theme="neon"] {
-  color-scheme: dark;
-  --surface-1: 13 10 20;
-  --surface-2: 20 16 30;
-  --surface:   29 23 40;
-  --surface-3: 42 34 58;
-
-  --fg:        245 240 250;
-  --fg-muted:  178 168 196;
-  --fg-subtle: 126 116 146;
-
-  --rule:        42 34 58;
-  --rule-strong: 62 52 84;
-
-  --accent:      240 80 127;
-  --accent-ink:  255 132 168;
-  --accent-halo: 240 80 127;
-
-  --vivo:      34 227 155;
-  --vivo-ink:  110 244 194;
-  --vivo-halo: 34 227 155;
-
-  --trabalho: 155 123 255;
-  --reuniao:  255 79 163;
-  --admin:    140 130 160;
-
-  --p1: 92 200 255;  --p2: 255 79 163;  --p3: 79 227 193;
-  --p4: 255 209 102; --p5: 155 123 255; --p6: 255 122 89;
-
-  --ok: 34 227 155;  --warn: 255 209 102;  --danger: 255 107 107;
-  --on-accent: 255 255 255;
-  --shadow: 0 0 0;
-  --glow: 240 80 127;
+  --surface-1: 243 244 246; --surface-2: 236 238 241; --surface: 255 255 255; --surface-3: 226 229 234;
+  --fg: 20 22 26; --fg-muted: 91 98 108; --fg-subtle: 138 145 155;
+  --rule: 228 231 235; --rule-strong: 206 211 218;
+  --accent: 13 148 136; --accent-ink: 15 118 110; --vivo: 13 148 136; --vivo-ink: 15 118 110;
+  --trabalho: 37 99 235; --reuniao: 217 119 6; --admin: 120 128 140;
+  --p1: 5 150 105; --p2: 217 119 6; --p3: 37 99 235; --p4: 124 58 237; --p5: 220 38 38; --p6: 13 148 136;
+  --ok: 5 150 105; --warn: 202 138 4; --danger: 220 38 38;
+  --on-accent: 255 255 255; --shadow: 30 34 40; --glow: 13 148 136;
 }
 
 @layer base {
-  html { font-feature-settings: 'cv11', 'ss01'; }
   body {
     @apply bg-surface-1 text-fg font-sans text-[13.5px] antialiased;
     font-variant-numeric: tabular-nums;
   }
-  :focus-visible {
-    @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-surface-1 rounded-md;
-  }
+  :focus-visible { @apply outline-none ring-2 ring-accent/50 ring-offset-2 ring-offset-surface-1 rounded-md; }
   ::selection { @apply bg-accent/30; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb { @apply rounded-full bg-surface-3; border: 3px solid transparent; background-clip: content-box; }
@@ -141,27 +85,26 @@
 }
 
 @layer components {
+  /* Título editorial: a data no dashboard, o nome da tarefa no detalhe. */
+  .display { @apply font-serif font-normal tracking-[-0.01em]; }
+
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-lg border border-rule-strong/70 bg-surface
-           px-3 py-1.5 text-[12.5px] font-medium text-fg-muted shadow-card transition
-           hover:border-rule-strong hover:text-fg hover:bg-surface-3/60
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-rule-strong/80 bg-surface
+           px-3 py-1.5 text-[12.5px] font-medium text-fg-muted transition
+           hover:border-rule-strong hover:text-fg hover:bg-surface-3
            active:translate-y-px disabled:opacity-40 disabled:pointer-events-none;
   }
-  .btn-accent {
-    @apply border-transparent bg-accent text-on-accent shadow-glow hover:bg-accent hover:text-on-accent
-           hover:brightness-110;
-  }
-  .btn-ghost { @apply border-transparent bg-transparent shadow-none hover:bg-surface-3/60; }
+  .btn-accent { @apply border-transparent bg-accent text-on-accent font-semibold hover:bg-accent hover:text-on-accent hover:brightness-110; }
+  .btn-ghost  { @apply border-transparent bg-transparent hover:bg-surface-3; }
   .inp {
-    @apply w-full rounded-lg border border-rule-strong/70 bg-surface px-3 py-2 text-[13px] text-fg
-           outline-none transition placeholder:text-fg-subtle
-           focus:border-accent focus:ring-2 focus:ring-accent/25;
+    @apply w-full rounded-lg border border-rule-strong/80 bg-surface-2 px-3 py-2 text-[13px] text-fg
+           outline-none transition placeholder:text-fg-subtle focus:border-accent/70 focus:ring-2 focus:ring-accent/20;
   }
-  .rot {
-    @apply font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-fg-subtle;
-  }
-  .med { @apply font-mono tabular-nums; }
-  .painel { @apply rounded-xl border border-rule bg-surface shadow-card; }
-  .faixa  { @apply rounded-xl bg-surface-2/80 ring-1 ring-inset ring-rule/60; }
-  .chip   { @apply inline-flex items-center rounded-md px-1.5 py-[3px] font-mono text-[10px] font-semibold leading-none; }
+  .rot   { @apply font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-fg-subtle; }
+  .med   { @apply font-mono tabular-nums; }
+  .painel{ @apply rounded-xl border border-rule bg-surface; }
+  .faixa { @apply rounded-xl border border-rule bg-surface-2/60; }
+  .chip  { @apply inline-flex items-center gap-1 rounded-md px-1.5 py-[3px] font-mono text-[10px] font-medium leading-none; }
+  /* linha de lista (dashboard, backlog): hairline, hover discreto */
+  .linha { @apply grid items-center gap-3 border-b border-rule px-3 py-2.5 transition-colors hover:bg-surface-3/40 last:border-b-0; }
 }

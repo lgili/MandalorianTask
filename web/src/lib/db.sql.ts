@@ -5,7 +5,7 @@
 
 import Database from '@tauri-apps/plugin-sql';
 import type {
-  Project, Session, SessionCard, Task, TaskCard, TaskKind, TaskStatus, Totais,
+  Outcome, Project, Session, SessionCard, Task, TaskCard, TaskKind, TaskStatus, Totais, Transition,
 } from './types';
 import { agoraIso, dayRangeUtc, tzAtual, type DayKey } from './tempo';
 
@@ -119,9 +119,42 @@ export async function capturaTarefa(
 
 export async function updateTask(
   id: number,
-  patch: Partial<Pick<Task, 'title' | 'project_id' | 'kind' | 'due_at' | 'notes' | 'pos' | 'archived_at'>>,
+  patch: Partial<Pick<Task, 'title' | 'project_id' | 'kind' | 'due_at' | 'notes' | 'pos' | 'archived_at'
+                           | 'outcome' | 'outcome_note'>>,
 ): Promise<void> {
   await patchRow('tasks', id, patch);
+}
+
+/** Concluir com desfecho: move para 'feito' e registra COMO terminou. */
+export async function concluiTarefa(id: number, outcome: Outcome, nota: string | null = null): Promise<void> {
+  await moveTask(id, 'feito');
+  await patchRow('tasks', id, { outcome, outcome_note: nota });
+}
+
+export async function transicoes(taskId: number): Promise<Transition[]> {
+  const d = await db();
+  return d.select<Transition[]>(`SELECT * FROM transitions WHERE task_id = $1 ORDER BY at`, [taskId]);
+}
+
+export async function sessoesDaTarefa(taskId: number): Promise<Session[]> {
+  const d = await db();
+  return d.select<Session[]>(`SELECT * FROM sessions WHERE task_id = $1 ORDER BY started_at DESC`, [taskId]);
+}
+
+/** Desfechos no período, para "Como terminaram". */
+export async function desfechos(fromUtc: string, toUtc: string): Promise<Array<{ outcome: Outcome | null; n: number }>> {
+  const d = await db();
+  return d.select(`SELECT outcome, COUNT(*) AS n FROM tasks
+                    WHERE done_at IS NOT NULL AND done_at >= $1 AND done_at < $2
+                    GROUP BY outcome ORDER BY n DESC`, [fromUtc, toUtc]);
+}
+
+/** Concluídas por dia (últimos N dias), para a sparkline da sidebar. */
+export async function concluidasPorDia(dias: number): Promise<Array<{ dia: string; n: number }>> {
+  const d = await db();
+  return d.select(`SELECT date(done_at,'localtime') AS dia, COUNT(*) AS n FROM tasks
+                    WHERE done_at IS NOT NULL AND julianday('now') - julianday(done_at) < $1
+                    GROUP BY dia ORDER BY dia`, [dias]);
 }
 
 export async function deleteTask(id: number): Promise<void> {
@@ -167,7 +200,9 @@ export async function moveTask(id: number, para: TaskStatus): Promise<void> {
        status     = $1,
        queued_at  = CASE WHEN $1 = 'fila'    AND queued_at  IS NULL THEN $2 ELSE queued_at  END,
        started_at = CASE WHEN $1 = 'fazendo' AND started_at IS NULL THEN $2 ELSE started_at END,
-       done_at    = CASE WHEN $1 = 'feito' THEN $2 ELSE NULL END
+       done_at    = CASE WHEN $1 = 'feito' THEN $2 ELSE NULL END,
+       outcome    = CASE WHEN $1 = 'feito' THEN outcome ELSE NULL END,
+       outcome_note = CASE WHEN $1 = 'feito' THEN outcome_note ELSE NULL END
      WHERE id = $3`,
     [para, agora, id],
   );
@@ -352,7 +387,7 @@ export async function setMeta(key: string, value: string): Promise<void> {
  */
 const COLUNAS: Record<string, ReadonlySet<string>> = {
   projects: new Set(['name', 'code', 'color', 'archived_at']),
-  tasks: new Set(['title', 'project_id', 'kind', 'status', 'due_at', 'notes', 'pos', 'archived_at']),
+  tasks: new Set(['title', 'project_id', 'kind', 'status', 'due_at', 'notes', 'pos', 'archived_at', 'outcome', 'outcome_note']),
   sessions: new Set(['started_at', 'ended_at', 'task_id', 'note']),
 };
 

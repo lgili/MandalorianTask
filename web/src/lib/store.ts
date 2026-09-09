@@ -2,7 +2,7 @@
 // O dado real mora no SQLite; isto é só o que a UI precisa lembrar entre telas.
 
 import { computed, ref } from 'vue';
-import type { Project, SessionCard, TaskCard, TaskStatus, Totais } from './types';
+import type { Outcome, Project, SessionCard, TaskCard, TaskStatus, Totais } from './types';
 import * as api from './db';
 import { dayKey, type DayKey } from './tempo';
 import { toast } from './toast';
@@ -14,6 +14,9 @@ export const diaAtual = ref<DayKey>(dayKey());
 export const sessoesDia = ref<SessionCard[]>([]);
 export const totaisDia = ref<Totais>({ total: 0, trabalho: 0, reuniao: 0, admin: 0 });
 export const carregando = ref(false);
+/** Tarefa aberta no painel de detalhe (null = fechado). */
+export const detalheId = ref<number | null>(null);
+export const abreDetalhe = (id: number | null) => { detalheId.value = id; };
 
 export const porStatus = (s: TaskStatus) => computed(() =>
   tarefas.value.filter((t) => t.status === s));
@@ -74,6 +77,15 @@ export async function captura(
   try {
     await api.capturaTarefa(titulo, projeto, kind);
     await carregaQuadro();
+  } catch (e) {
+    toast.erro(api.dbErro(e));
+  }
+}
+
+export async function conclui(id: number, outcome: Outcome, nota: string | null): Promise<void> {
+  try {
+    await api.concluiTarefa(id, outcome, nota);
+    await Promise.all([carregaQuadro(), carregaDia()]);
   } catch (e) {
     toast.erro(api.dbErro(e));
   }

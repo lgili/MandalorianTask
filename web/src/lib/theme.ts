@@ -2,16 +2,16 @@
 // Aplicado ANTES do mount, senão a janela pisca na abertura.
 
 const CHAVE = 'bancada-theme';
-export type Tema = 'noite' | 'claro' | 'neon';
+export type Tema = 'ledger' | 'noite' | 'claro';
 export const TEMAS: Array<{ id: Tema; nome: string; desc: string }> = [
-  { id: 'noite', nome: 'Noite', desc: 'escuro profundo, índigo' },
-  { id: 'claro', nome: 'Claro', desc: 'light frio, índigo' },
-  { id: 'neon',  nome: 'Neon',  desc: 'escuro violeta, coral' },
+  { id: 'ledger', nome: 'Ledger', desc: 'quase-preto, teal, serif' },
+  { id: 'noite',  nome: 'Noite',  desc: 'escuro azulado, índigo' },
+  { id: 'claro',  nome: 'Claro',  desc: 'light frio' },
 ];
 
 export function temaAtual(): Tema {
   const t = localStorage.getItem(CHAVE) as Tema | null;
-  return t && TEMAS.some((x) => x.id === t) ? t : 'noite';
+  return t && TEMAS.some((x) => x.id === t) ? t : 'ledger';
 }
 
 export function aplicaTema(t: Tema): void {

@@ -4,6 +4,14 @@
 export type TaskStatus = 'backlog' | 'fila' | 'fazendo' | 'feito';
 export type TaskKind = 'trabalho' | 'reuniao' | 'admin';
 export type SessionSource = 'auto' | 'manual';
+export type Outcome = 'entregue' | 'descartada' | 'repassada' | 'revertida';
+
+export const OUTCOMES: Array<{ id: Outcome; label: string; desc: string }> = [
+  { id: 'entregue',   label: 'Entregue',   desc: 'saiu do jeito que devia' },
+  { id: 'descartada', label: 'Descartada', desc: 'não valia o custo' },
+  { id: 'repassada',  label: 'Repassada',  desc: 'outra pessoa assumiu' },
+  { id: 'revertida',  label: 'Revertida',  desc: 'voltou atrás, precisa repensar' },
+];
 
 export const STATUS: Array<{ id: TaskStatus; label: string }> = [
   { id: 'backlog', label: 'Backlog' },
@@ -45,7 +53,11 @@ export interface Task {
   started_at: string | null;
   done_at: string | null;
   archived_at: string | null;
+  outcome: Outcome | null;
+  outcome_note: string | null;
 }
+
+export interface Transition { id: number; task_id: number; de: TaskStatus | null; para: TaskStatus; at: string }
 
 /** Tarefa com o que a UI precisa junto: projeto e tempo acumulado. */
 export interface TaskCard extends Task {

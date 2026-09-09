@@ -4,6 +4,7 @@ import { Clock, Repeat, Play, Pause, Check } from 'lucide-vue-next';
 import type { TaskCard } from '../lib/types';
 import { fmtHM } from '../lib/tempo';
 import { agora, decorrido, minutosDecorridos } from '../lib/relogio';
+import { abreDetalhe } from '../lib/store';
 
 const props = defineProps<{ card: TaskCard; rodandoDesde?: string | null }>();
 const emit = defineEmits<{ iniciar: [id: number]; pausar: []; concluir: [id: number] }>();
@@ -33,21 +34,20 @@ const prazo = computed(() => {
 </script>
 
 <template>
-  <div class="group relative cursor-grab rounded-xl border bg-surface p-3 transition
+  <div class="group relative cursor-grab rounded-xl border bg-surface p-3 transition-[transform,box-shadow,border-color]
               hover:-translate-y-px hover:shadow-pop active:cursor-grabbing"
-    :class="rodandoDesde ? 'border-vivo/50 shadow-live' : 'border-rule shadow-card hover:border-rule-strong'">
+    :class="rodandoDesde ? 'border-accent/60 shadow-live' : 'border-rule hover:border-rule-strong'">
 
     <!-- brilho de fundo do que está rodando -->
-    <div v-if="rodandoDesde" class="pointer-events-none absolute inset-0 rounded-xl bg-vivo/[0.06]" />
+    <div v-if="rodandoDesde" class="pointer-events-none absolute inset-0 rounded-xl bg-accent/[0.06]" />
 
     <div class="relative flex items-start gap-2">
       <span v-if="cor" class="mt-[5px] h-2.5 w-2.5 flex-none rounded-full"
             :style="{ background: cor, boxShadow: `0 0 0 3px ${cor}22` }" />
       <span v-else class="mt-[5px] h-2.5 w-2.5 flex-none rounded-full bg-surface-3" />
       <div class="min-w-0 flex-1">
-        <div class="line-clamp-2 text-[13px] font-semibold leading-[1.35] tracking-[-0.01em]">
-          {{ card.title }}
-        </div>
+        <button class="line-clamp-2 text-left text-[13px] font-semibold leading-[1.35] tracking-[-0.01em] hover:text-accent-ink"
+                @click.stop="abreDetalhe(card.id)">{{ card.title }}</button>
         <div v-if="card.origem_title" class="mt-0.5 truncate text-[10.5px] text-fg-subtle">
           de {{ card.origem_title }}
         </div>

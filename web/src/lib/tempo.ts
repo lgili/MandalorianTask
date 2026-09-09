@@ -147,3 +147,27 @@ export function inicioSemana(key: DayKey): DayKey {
 export function agoraIso(): string {
   return new Date().toISOString();
 }
+
+const DIAS_LONGO = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+const MESES_LONGO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto',
+  'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** 'quinta-feira, 10 de setembro' */
+export function rotuloDiaLongo(d: Date = new Date()): string {
+  return `${DIAS_LONGO[d.getDay()]}, ${d.getDate()} de ${MESES_LONGO[d.getMonth()]}`;
+}
+
+/** Dias inteiros entre dois instantes (positivo = b depois de a). */
+export function diasEntre(aIso: string, b: Date = new Date()): number {
+  return Math.floor((b.getTime() - new Date(aIso).getTime()) / 86400000);
+}
+
+/** '2h atrás', 'ontem', '6d atrás' */
+export function relativo(iso: string, agora: Date = new Date()): string {
+  const min = Math.round((agora.getTime() - new Date(iso).getTime()) / 60000);
+  if (min < 60) return `${Math.max(1, min)} min atrás`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h}h atrás`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'ontem' : `${d}d atrás`;
+}

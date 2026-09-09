@@ -117,7 +117,20 @@ CREATE TABLE meta (
   value TEXT NOT NULL
 );
 "#,
+    },
+    Migration {
+        version: 2,
+        description: "tasks.outcome: como a tarefa terminou",
+        kind: MigrationKind::Up,
+        sql: r#"
+-- Concluir não é um estado só. "Entregue" e "descartada" contam horas iguais
+-- mas contam histórias diferentes — e o relatório de fim de mês precisa das
+-- duas. NULL enquanto a tarefa não estiver em 'feito'.
+ALTER TABLE tasks ADD COLUMN outcome TEXT
+  CHECK (outcome IS NULL OR outcome IN ('entregue','descartada','repassada','revertida'));
+ALTER TABLE tasks ADD COLUMN outcome_note TEXT;
+"#,
     }]
-    // Próximas migrations entram AQUI, nunca editando a de cima:
-    //   v2 (0.3): notes + notes_fts (FTS5) — índice do vault de markdown.
+    // Próximas migrations entram AQUI, nunca editando as de cima:
+    //   v3 (0.3): notes + notes_fts (FTS5) — índice do vault de markdown.
 }

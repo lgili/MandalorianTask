@@ -4,7 +4,7 @@ import { CornerDownLeft, Trash2, ArrowRight } from 'lucide-vue-next';
 import type { TaskCard, TaskKind } from '../lib/types';
 import { analisa } from '../lib/captura';
 import * as api from '../lib/db';
-import { backlog, carregaQuadro, projetos, rodando, tarefas } from '../lib/store';
+import { abreDetalhe, backlog, carregaQuadro, projetos, rodando, tarefas } from '../lib/store';
 import { toast } from '../lib/toast';
 import { rotuloDia, dayKey } from '../lib/tempo';
 
@@ -151,7 +151,7 @@ onMounted(() => campo.value?.focus());
                  transition-colors hover:bg-surface"
           :class="enfileirados.has(t.id) && 'opacity-55'">
           <div class="flex min-w-0 items-baseline gap-2">
-            <span class="truncate text-[13.5px] leading-snug">{{ t.title }}</span>
+            <button class="truncate text-left text-[13.5px] leading-snug hover:text-accent-ink" @click="abreDetalhe(t.id)">{{ t.title }}</button>
             <span v-if="enfileirados.has(t.id)" class="med flex-none text-[10px] text-ok">→ fila</span>
           </div>
 
