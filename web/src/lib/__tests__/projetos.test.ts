@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pontua, podeCriar, ranqueia } from '../projetos';
+import { codigoAuto, corPrevista, pontua, podeCriar, ranqueia } from '../projetos';
 import type { Project } from '../types';
 
 const P = (id: number, name: string, code: string | null = null): Project =>
@@ -73,5 +73,47 @@ describe('podeCriar', () => {
 
   it('não oferece criar com texto vazio', () => {
     expect(podeCriar('   ', todos)).toBe(false);
+  });
+});
+
+describe('codigoAuto', () => {
+  const todos = [FLYBACK, NACQ];
+
+  it('deriva das quatro primeiras letras da primeira palavra', () => {
+    expect(codigoAuto('Retrofit linha 4', todos)).toBe('RETR');
+    expect(codigoAuto('Bancada e infra', todos)).toBe('BANC');
+  });
+
+  it('tira acento', () => {
+    expect(codigoAuto('Térmico', todos)).toBe('TERM');
+  });
+
+  it('não colide com código existente', () => {
+    const comNacq = [...todos, P(9, 'Nacq outro', 'NACQ')];
+    expect(codigoAuto('NACQ 2027', comNacq)).toBe('NACQ2');
+  });
+
+  it('nome sem alfanumérico devolve null em vez de código vazio', () => {
+    expect(codigoAuto('!!!', todos)).toBeNull();
+  });
+});
+
+describe('corPrevista', () => {
+  it('devolve a cor menos usada entre os ativos', () => {
+    const usados = [
+      { ...P(1, 'a'), color: 'p1' }, { ...P(2, 'b'), color: 'p1' },
+      { ...P(3, 'c'), color: 'p2' },
+    ];
+    expect(corPrevista(usados)).toBe('p3');
+  });
+
+  it('ignora projeto arquivado na contagem', () => {
+    const usados = [
+      { ...P(1, 'a'), color: 'p1', archived_at: '2026-01-01' },
+      { ...P(2, 'b'), color: 'p2' }, { ...P(3, 'c'), color: 'p3' },
+      { ...P(4, 'd'), color: 'p4' }, { ...P(5, 'e'), color: 'p5' },
+      { ...P(6, 'f'), color: 'p6' },
+    ];
+    expect(corPrevista(usados)).toBe('p1');
   });
 });

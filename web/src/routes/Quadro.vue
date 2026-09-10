@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router';
 import Card from '../components/Card.vue';
 import CapturaLinha from '../components/CapturaLinha.vue';
 import type { TaskCard, TaskStatus } from '../lib/types';
-import { carregaProjetos, carregaQuadro, conclui, move, pausa, rodando, tarefas } from '../lib/store';
+import { arrastando, carregaProjetos, carregaQuadro, conclui, move, pausa, rodando, tarefas } from '../lib/store';
 import { fmtHM } from '../lib/tempo';
 import { ref } from 'vue';
 
@@ -16,7 +16,6 @@ const COLUNAS: Array<{ id: TaskStatus; label: string }> = [
   { id: 'feito', label: 'Feito · 14d' },
 ];
 
-const arrastando = ref<number | null>(null);
 const sobre = ref<TaskStatus | null>(null);
 
 const daColuna = (id: TaskStatus) => tarefas.value.filter((t) => t.status === id);

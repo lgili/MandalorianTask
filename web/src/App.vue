@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import { useEventListener } from '@vueuse/core';
 import { Square, AlertTriangle, Plus, Settings } from 'lucide-vue-next';
@@ -8,9 +8,10 @@ import TaskDetail from './components/TaskDetail.vue';
 import QuickAdd from './components/QuickAdd.vue';
 import ChipProjeto from './components/ChipProjeto.vue';
 import {
-  abreDetalhe, abreQuickAdd, carregaProjetos, carregaQuadro, carregaDia, projetos,
-  quickAdd, rodando, pausa, tarefas, sessoesDia,
+  abreDetalhe, abreQuickAdd, arrastando, carregaProjetos, carregaQuadro, carregaDia,
+  criaProjeto, projetos, quickAdd, rodando, pausa, soltaEmProjeto, tarefas, sessoesDia,
 } from './lib/store';
+import { corPrevista } from './lib/projetos';
 import * as api from './lib/db';
 import { toast } from './lib/toast';
 import { agora, decorrido } from './lib/relogio';
@@ -32,6 +33,33 @@ const contagem = computed<Record<string, number | string>>(() => ({
 
 /** Os seis projetos mais ativos. `resumoProjetos` já ordena por atividade. */
 const projetosVisiveis = computed(() => projetos.value.slice(0, 6));
+
+// ── criar projeto SEM sair de onde se está ────────────────────────────────
+// O `+` daqui só navegava para /projetos, onde ainda era preciso um segundo
+// clique para o campo aparecer: duas navegações e dois cliques para a operação
+// que o dono mais faz. Agora a linha nasce em edição aqui mesmo.
+const criandoProjeto = ref(false);
+const nomeProjeto = ref('');
+const campoProjeto = ref<HTMLInputElement | null>(null);
+/** Acende o ponto com a cor que o projeto VAI receber, antes de confirmar. */
+const corDoNovo = computed(() => corPrevista(projetos.value));
+
+async function abreCriacaoProjeto(): Promise<void> {
+  criandoProjeto.value = true;
+  await nextTick();
+  campoProjeto.value?.focus();
+}
+
+async function confirmaProjeto(): Promise<void> {
+  const p = await criaProjeto(nomeProjeto.value);
+  nomeProjeto.value = '';
+  if (!p) return;
+  criandoProjeto.value = false;
+  router.push(`/projeto/${p.id}`);
+}
+
+/** Projeto sob o card arrastado. */
+const alvoProjeto = ref<number | null>(null);
 
 /** O projeto da tela atual, para o quick-add nascer já vinculado a ele. */
 const projetoDaTela = computed(() => {
@@ -116,14 +144,32 @@ onMounted(async () => {
           <div class="flex items-center gap-2 px-3 pb-1">
             <span class="rot">Projetos</span>
             <button class="ml-auto rounded p-0.5 text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
-              title="Novo projeto" @click="router.push('/projetos')">
+              title="Novo projeto" @click="abreCriacaoProjeto">
               <Plus class="h-3 w-3" />
             </button>
           </div>
 
+          <!-- linha nova em edição, com a cor já acesa -->
+          <div v-if="criandoProjeto"
+            class="grid grid-cols-[10px_1fr] items-center gap-2.5 rounded-lg px-3 py-1">
+            <ChipProjeto variante="ponto" :cor="corDoNovo" />
+            <input ref="campoProjeto" v-model="nomeProjeto" spellcheck="false"
+              class="w-full bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-subtle"
+              placeholder="nome do projeto"
+              @keydown.enter="confirmaProjeto"
+              @keydown.esc="criandoProjeto = false; nomeProjeto = ''"
+              @blur="criandoProjeto = false; nomeProjeto = ''">
+          </div>
+
+          <!-- soltar um card do quadro aqui reatribui o projeto -->
           <RouterLink v-for="p in projetosVisiveis" :key="p.id" :to="`/projeto/${p.id}`"
             class="grid grid-cols-[10px_1fr_auto] items-center gap-2.5 rounded-lg px-3 py-1 text-[12px] transition-colors"
-            :class="route.path === `/projeto/${p.id}` ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg'">
+            :class="[
+              route.path === `/projeto/${p.id}` ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg',
+              alvoProjeto === p.id && arrastando ? 'ring-2 ring-inset ring-accent/60 bg-accent/10' : '',
+            ]"
+            @dragover.prevent="alvoProjeto = p.id" @dragleave="alvoProjeto = null"
+            @drop.prevent="alvoProjeto = null; soltaEmProjeto(p.id)">
             <ChipProjeto variante="ponto" :cor="p.color" />
             <span class="truncate">{{ p.name }}</span>
             <span v-if="p.abertas" class="med text-[11px] text-fg-subtle">{{ p.abertas }}</span>

@@ -4,6 +4,7 @@
 import { computed, ref } from 'vue';
 import type { Outcome, Project, SessionCard, TaskCard, TaskStatus, Totais } from './types';
 import * as api from './db';
+import { codigoAuto } from './projetos';
 import { dayKey, type DayKey } from './tempo';
 import { toast } from './toast';
 
@@ -46,7 +47,9 @@ export async function criaProjeto(nome: string, codigo: string | null = null): P
   const n = nome.trim();
   if (!n) return null;
   try {
-    const id = await api.createProject(n, codigo);
+    // Sem código o chip de projeto cai no nome inteiro e a coluna do
+    // seletor fica vazia. Derivar é melhor que pedir mais um campo.
+    const id = await api.createProject(n, codigo ?? codigoAuto(n, projetos.value));
     await carregaProjetos();
     return projetos.value.find((p) => p.id === id) ?? null;
   } catch (e) {
@@ -132,6 +135,28 @@ export function projetoDe(id: number | null): Project | undefined {
   if (id == null) return undefined;
   return projetos.value.find((p) => p.id === id)
     ?? projetosArquivados.value.find((p) => p.id === id);
+}
+
+/**
+ * Card em arrasto agora. Mora no store porque o alvo (a lista de projetos na
+ * sidebar) vive em App.vue e a origem (o card) vive no Quadro — soltar um card
+ * sobre um projeto é a forma mais direta de reatribuir, e era impossível com
+ * o `arrastando` como ref local de Quadro.vue.
+ */
+export const arrastando = ref<number | null>(null);
+
+export async function soltaEmProjeto(projectId: number | null): Promise<void> {
+  const id = arrastando.value;
+  arrastando.value = null;
+  if (id == null) return;
+  try {
+    await api.reatribuiProjeto([id], projectId);
+    await Promise.all([carregaQuadro(), carregaProjetos()]);
+    const p = projetos.value.find((x) => x.id === projectId);
+    toast.ok(p ? `Movida para ${p.name}` : 'Movida para a Caixa');
+  } catch (e) {
+    toast.erro(api.dbErro(e));
+  }
 }
 
 // ── captura global ────────────────────────────────────────────────────────

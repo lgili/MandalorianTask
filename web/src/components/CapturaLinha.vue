@@ -90,8 +90,9 @@ async function registra(paraFila: boolean): Promise<void> {
     const id = await api.capturaTarefa(a.titulo, projetoFinal.value?.id ?? null, a.kind, a.prazo);
     if (destino !== 'backlog') await api.moveTask(id, destino);
     linha.value = '';
-    escolhido.value = null;
     tokenIni.value = null;
+    // O projeto NÃO é zerado: despejar oito tarefas no mesmo projeto exigia
+    // digitar `#proj` oito vezes. Quem quiser trocar usa o ✕ do pill.
     await recarregaTudo();
     emit('criada', id);
     // O cursor não pode andar: a próxima tarefa vem logo atrás.
