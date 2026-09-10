@@ -19,7 +19,7 @@
   <div class="grid min-h-0 flex-1 place-items-center p-8">
     <div class="max-w-[440px] text-center">
       <h2 class="mb-2 text-base font-semibold">Notas chegam na v0.3</h2>
-      <p class="text-[13px] leading-relaxed text-fg-muted">
+      <p class="text-[14px] leading-relaxed text-fg-muted">
         Vai apontar para o seu vault do Obsidian, não criar outro. Os arquivos
         <code class="rounded bg-surface-2 px-1 py-0.5 font-mono text-[11px]">.md</code>
         são a verdade; o banco guarda só o índice de busca.

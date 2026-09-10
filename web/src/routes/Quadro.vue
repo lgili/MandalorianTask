@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { Plus } from 'lucide-vue-next';
+import { computed, onMounted } from 'vue';
+import { RouterLink } from 'vue-router';
 import Card from '../components/Card.vue';
+import CapturaLinha from '../components/CapturaLinha.vue';
 import type { TaskCard, TaskStatus } from '../lib/types';
-import * as api from '../lib/db';
-import { carregaProjetos, carregaQuadro, move, pausa, rodando, tarefas } from '../lib/store';
-import { toast } from '../lib/toast';
+import { carregaProjetos, carregaQuadro, conclui, move, pausa, rodando, tarefas } from '../lib/store';
 import { fmtHM } from '../lib/tempo';
+import { ref } from 'vue';
 
 // O Backlog é uma tela própria, então o quadro tem três colunas largas em vez
 // de quatro apertadas — o que também o faz caber no Windows a 150% de escala.
@@ -18,8 +18,6 @@ const COLUNAS: Array<{ id: TaskStatus; label: string }> = [
 
 const arrastando = ref<number | null>(null);
 const sobre = ref<TaskStatus | null>(null);
-const novo = ref('');
-const criando = ref(false);
 
 const daColuna = (id: TaskStatus) => tarefas.value.filter((t) => t.status === id);
 const colunas = computed(() => COLUNAS.map((c) => ({ ...c, itens: daColuna(c.id) })));
@@ -40,42 +38,28 @@ async function solta(status: TaskStatus): Promise<void> {
   if (id != null) await move(id, status);
 }
 
-async function cria(): Promise<void> {
-  const t = novo.value.trim();
-  if (!t) return;
-  try {
-    const id = await api.capturaTarefa(t);
-    await api.moveTask(id, 'fila');
-    novo.value = '';
-    criando.value = false;
-    await carregaQuadro();
-  } catch (e) { toast.erro(api.dbErro(e)); }
-}
-
 onMounted(async () => { await carregaProjetos(); await carregaQuadro(); });
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <div class="flex flex-none items-center gap-2 px-4 pb-2 pt-3">
-      <template v-if="criando">
-        <input class="inp max-w-[360px]" v-model="novo" placeholder="Título da tarefa" autofocus
-               @keydown.enter="cria" @keydown.esc="criando = false">
-        <button class="btn" @click="cria">Criar na fila</button>
-        <button class="btn" @click="criando = false">Cancelar</button>
-      </template>
-      <button v-else class="btn" @click="criando = true">
-        <Plus class="h-3.5 w-3.5" />Nova na fila
-      </button>
-      <span class="ml-auto font-mono text-[10.5px] text-fg-subtle">
+    <!-- Campo permanente, não um botão que abre e fecha: o padrão antigo
+         obrigava um clique por tarefa. E aqui a captura entende `#projeto`,
+         então o quadro parou de fabricar tarefa órfã. -->
+    <div class="flex flex-none items-start gap-3 px-6 pb-2 pt-3">
+      <div class="max-w-[420px] flex-1">
+        <CapturaLinha status-inicial="fila" :dicas="false"
+          placeholder="nova tarefa na fila…" @criada="carregaQuadro" />
+      </div>
+      <span class="mt-2 ml-auto font-mono text-[11px] text-fg-subtle">
         ▶ no card começa a contar · arraste para mover
       </span>
     </div>
 
-    <div class="grid min-h-0 flex-1 grid-cols-3 gap-3 overflow-hidden px-4 pb-4">
+    <div class="grid min-h-0 flex-1 grid-cols-3 gap-3 overflow-hidden px-6 pb-4">
       <div v-for="col in colunas" :key="col.id"
         class="faixa flex min-h-0 flex-col transition-colors"
-        :class="sobre === col.id && '!ring-accent/60 !bg-accent/10'"
+        :class="sobre === col.id && 'ring-2 ring-inset ring-accent/60 !bg-accent/10'"
         @dragover.prevent="sobre = col.id" @dragleave="sobre = null" @drop.prevent="solta(col.id)">
 
         <div class="flex flex-none items-center gap-2 px-2.5 pb-1.5 pt-2.5">
@@ -94,10 +78,20 @@ onMounted(async () => { await carregaProjetos(); await carregaQuadro(); });
             :class="arrastando === t.id && 'opacity-40'"
             @dragstart="arrastando = t.id" @dragend="arrastando = null; sobre = null">
             <Card :card="t" :rodando-desde="desde(t)"
-                  @iniciar="move($event, 'fazendo')" @pausar="pausa()" @concluir="move($event, 'feito')" />
+                  @iniciar="move($event, 'fazendo')" @pausar="pausa()"
+                  @concluir="conclui($event, 'entregue', null)" />
           </div>
-          <p v-if="!col.itens.length" class="px-1 py-2 text-[11.5px] text-fg-subtle">
-            {{ col.id === 'fila' ? 'Puxe do backlog.' : 'vazio' }}
+          <!-- 'vazio' era placeholder de dev, e era o que o usuário novo via
+               em duas das três colunas na primeira abertura do Quadro. -->
+          <p v-if="!col.itens.length" class="px-1 py-3 text-[12px] leading-relaxed text-fg-subtle">
+            <template v-if="col.id === 'fila'">
+              Nada escolhido para agora.<br>
+              <RouterLink to="/backlog" class="text-accent-ink hover:underline">puxe da captura →</RouterLink>
+            </template>
+            <template v-else-if="col.id === 'fazendo'">
+              Nada em curso.<br>Arraste um card para cá — é isso que começa a contar o tempo.
+            </template>
+            <template v-else>Nada concluído nos últimos 14 dias.</template>
           </p>
         </div>
       </div>

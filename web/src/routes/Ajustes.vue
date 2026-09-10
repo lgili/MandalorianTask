@@ -1,80 +1,50 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { Plus } from 'lucide-vue-next';
-import * as api from '../lib/db';
-import { toast } from '../lib/toast';
-import { carregaProjetos, projetos } from '../lib/store';
+// Ajustes voltou a ser ajustes. O CRUD de projeto morava aqui, abaixo do
+// seletor de tema — para criar um projeto era preciso sair do que se estava
+// fazendo, navegar até a última tela e perder o texto digitado. Agora ele
+// vive em /projetos, que é onde a mão já está.
+import { useRouter } from 'vue-router';
+import { ref } from 'vue';
+import { ArrowRight } from 'lucide-vue-next';
+import { projetos } from '../lib/store';
 import { GRAO_MIN, tzAtual } from '../lib/tempo';
 import { TEMAS, aplicaTema, temaAtual } from '../lib/theme';
 
+const router = useRouter();
 const tema = ref(temaAtual());
 function escolheTema(t: typeof tema.value): void { tema.value = t; aplicaTema(t); }
-
-const nome = ref('');
-const codigo = ref('');
-
-async function cria(): Promise<void> {
-  if (!nome.value.trim()) return;
-  try {
-    await api.createProject(nome.value, codigo.value.trim() || null);
-    nome.value = ''; codigo.value = '';
-    await carregaProjetos();
-    toast.ok('Projeto criado');
-  } catch (e) { toast.erro(api.dbErro(e)); }
-}
-
-async function arquiva(id: number, n: string): Promise<void> {
-  try {
-    await api.updateProject(id, { archived_at: new Date().toISOString() });
-    await carregaProjetos();
-    toast.ok(`${n} arquivado`);
-  } catch (e) { toast.erro(api.dbErro(e)); }
-}
-
-onMounted(carregaProjetos);
 </script>
 
 <template>
   <div class="min-h-0 flex-1 overflow-y-auto">
-    <div class="flex max-w-[620px] flex-col gap-4 px-4 pb-10 pt-3">
+    <div class="flex max-w-[620px] flex-col gap-4 px-6 pb-10 pt-3">
       <div class="painel">
-        <div class="border-b border-rule px-4 py-2.5"><span class="rot">Aparência</span></div>
+        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Aparência</span></div>
         <div class="grid grid-cols-3 gap-2 p-3">
           <button v-for="t in TEMAS" :key="t.id" @click="escolheTema(t.id)"
             class="rounded-xl border p-3 text-left transition"
             :class="tema === t.id ? 'border-accent bg-accent/10 shadow-glow' : 'border-rule hover:border-rule-strong'">
-            <div class="text-[13px] font-semibold">{{ t.nome }}</div>
+            <div class="text-[14px] font-semibold">{{ t.nome }}</div>
             <div class="text-[11px] text-fg-subtle">{{ t.desc }}</div>
           </button>
         </div>
       </div>
 
-      <div class="painel">
-        <div class="border-b border-rule px-4 py-2.5">
-          <span class="rot">Projetos</span>
-          <span class="ml-2 text-[10.5px] text-fg-subtle">use <code class="med">#código</code> na captura</span>
-        </div>
-        <div class="px-4 py-1">
-          <div v-for="p in projetos" :key="p.id"
-            class="flex items-center gap-3 border-b border-rule py-2 last:border-b-0">
-            <span class="text-[13px] font-medium">{{ p.name }}</span>
-            <span v-if="p.code" class="med text-[10.5px] text-fg-subtle">{{ p.code }}</span>
-            <button class="btn ml-auto" @click="arquiva(p.id, p.name)">Arquivar</button>
-          </div>
-          <p v-if="!projetos.length" class="py-2.5 text-[12px] text-fg-subtle">
-            Nenhum projeto ainda. Sem projeto o app funciona, mas o relatório por projeto fica vazio.
-          </p>
-          <div class="flex items-center gap-2 border-t border-rule py-2.5">
-            <input class="inp max-w-[220px]" v-model="nome" placeholder="Nome" @keydown.enter="cria">
-            <input class="inp max-w-[110px]" v-model="codigo" placeholder="Código" @keydown.enter="cria">
-            <button class="btn btn-accent" @click="cria"><Plus class="h-3.5 w-3.5" />Criar</button>
+      <button class="painel flex items-center gap-3 px-6 py-3 text-left transition hover:border-rule-strong"
+        @click="router.push('/projetos')">
+        <div>
+          <div class="text-[14px] font-semibold">Projetos</div>
+          <div class="text-[12px] text-fg-subtle">
+            {{ projetos.length }} {{ projetos.length === 1 ? 'projeto' : 'projetos' }} ·
+            criar, renomear, cor, código e arquivo ficam na tela de Projetos
           </div>
         </div>
-      </div>
+        <ArrowRight class="ml-auto h-4 w-4 flex-none text-fg-subtle" />
+      </button>
 
       <div class="painel">
-        <div class="border-b border-rule px-4 py-2.5"><span class="rot">Como o tempo é medido</span></div>
-        <div class="space-y-2.5 px-4 py-3.5 text-[12.5px] leading-relaxed text-fg-muted">
+        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Como o tempo é medido</span></div>
+        <div class="space-y-2.5 px-6 py-3.5 text-[12px] leading-relaxed text-fg-muted">
           <p>
             Mover um card para <b class="text-fg">Fazendo</b> abre uma sessão; tirar de lá fecha.
             Não existe botão de cronômetro — o tempo é consequência do quadro.
@@ -92,8 +62,21 @@ onMounted(carregaProjetos);
       </div>
 
       <div class="painel">
-        <div class="border-b border-rule px-4 py-2.5"><span class="rot">Dados</span></div>
-        <div class="px-4 py-3.5 text-[12.5px] leading-relaxed text-fg-muted">
+        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Atalhos</span></div>
+        <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-6 py-3.5 text-[12px] text-fg-muted">
+          <span class="med text-fg">n</span><span>nova tarefa, de qualquer tela</span>
+          <span class="med text-fg">1…6</span><span>navegar</span>
+          <span class="med text-fg">alt+1…6</span><span>navegar mesmo com o cursor num campo</span>
+          <span class="med text-fg">#</span><span>projeto, na linha de captura</span>
+          <span class="med text-fg">!</span><span>prazo: <span class="med">hoje · qui · 12/09 · +3d</span></span>
+          <span class="med text-fg">@</span><span>tipo: <span class="med">reuniao · admin</span></span>
+          <span class="med text-fg">esc</span><span>fecha o que estiver aberto</span>
+        </div>
+      </div>
+
+      <div class="painel">
+        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Dados</span></div>
+        <div class="px-6 py-3.5 text-[12px] leading-relaxed text-fg-muted">
           Um arquivo SQLite em
           <code class="med rounded bg-surface-2 px-1 py-0.5 text-[11px]">%APPDATA%\com.lgili.bancada\</code>.
           Backup é copiar o arquivo. Fuso: <span class="med">{{ tzAtual() }}</span>.

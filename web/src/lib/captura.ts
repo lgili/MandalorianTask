@@ -1,16 +1,19 @@
 // Gramática da linha de captura.
 //
-// EXATAMENTE dois tokens. Mais que dois e ninguém lembra no meio de uma
-// reunião — que é o único momento em que esta tela é usada.
+// Três tokens, e nenhum precisa ser lembrado: `#` abre uma lista, e os outros
+// dois aparecem na dica embaixo do campo. O que não pode é obrigar a tirar a
+// mão do teclado no meio de uma reunião.
 //
-//   #cf03    projeto, casando por prefixo em código ou nome
+//   #cf03    projeto — abre a lista; sem escolher, vale o melhor casamento
 //   !qui     prazo: hoje | amanha | seg..dom | 12/09 | +3d
+//   @reuniao tipo: trabalho (padrão) | reuniao | admin
 //
 // Regra inegociável: NUNCA existe erro de validação aqui. Token que não casa
 // vira texto comum e a tarefa é criada assim mesmo. Interromper alguém com
 // uma mensagem de erro durante uma reunião é pior que perder o metadado.
 
-import type { Project } from './types';
+import type { Project, TaskKind } from './types';
+import { ranqueia } from './projetos';
 import { dayKey, parseDayKey } from './tempo';
 
 export interface Analise {
@@ -18,9 +21,18 @@ export interface Analise {
   projeto: Project | null;
   /** UTC ISO no meio-dia local — prazo é dia, não instante. */
   prazo: string | null;
+  /** 'trabalho' se ninguém disse o contrário. */
+  kind: TaskKind;
   /** Tokens escritos que não casaram com nada. Só para feedback sutil. */
   ignorados: string[];
 }
+
+/** `@reuniao`, `@admin`, `@trabalho` — e as iniciais. */
+const TIPOS: Record<string, TaskKind> = {
+  r: 'reuniao', reuniao: 'reuniao', 'reunião': 'reuniao',
+  a: 'admin', admin: 'admin',
+  t: 'trabalho', trabalho: 'trabalho',
+};
 
 const DIAS: Record<string, number> = {
   dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6, 'sáb': 6,
@@ -75,22 +87,24 @@ export function analisaPrazo(token: string, hoje = new Date()): string | null {
   return null;
 }
 
-/** Casa por prefixo em código, depois em nome. Ambíguo => não casa. */
+/**
+ * O melhor casamento para o token, ou null se nada casar.
+ *
+ * Antes, prefixo ambíguo devolvia `null` — a tarefa nascia sem projeto e o
+ * único aviso era um risco num chip de 10px. Hoje quem digita `#` vê a lista e
+ * escolhe; esta função é só o fallback de quem submeteu sem olhar, e aí o
+ * melhor palpite vale mais que a omissão silenciosa.
+ */
 export function achaProjeto(token: string, projetos: Project[]): Project | null {
-  const t = token.toLowerCase();
-  if (!t) return null;
-  const porCodigo = projetos.filter((p) => p.code?.toLowerCase().startsWith(t));
-  if (porCodigo.length === 1) return porCodigo[0];
-  const porNome = projetos.filter((p) => p.name.toLowerCase().startsWith(t));
-  if (porNome.length === 1) return porNome[0];
-  // prefixo ambíguo: preferir errar por não marcar do que por marcar errado
-  return null;
+  if (!token) return null;
+  return ranqueia(token, projetos)[0] ?? null;
 }
 
 export function analisa(linha: string, projetos: Project[], hoje = new Date()): Analise {
   const ignorados: string[] = [];
   let projeto: Project | null = null;
   let prazo: string | null = null;
+  let kind: TaskKind = 'trabalho';
 
   const palavras = linha.trim().split(/\s+/);
   const restantes: string[] = [];
@@ -103,6 +117,13 @@ export function analisa(linha: string, projetos: Project[], hoje = new Date()): 
       restantes.push(w);            // não casou: vira texto, não some
       continue;
     }
+    if (w.startsWith('@') && w.length > 1) {
+      const k = TIPOS[w.slice(1).toLowerCase()];
+      if (k) { kind = k; continue; }
+      ignorados.push(w);
+      restantes.push(w);
+      continue;
+    }
     if (w.startsWith('!') && w.length > 1 && !prazo) {
       const d = analisaPrazo(w.slice(1), hoje);
       if (d) { prazo = d; continue; }
@@ -113,5 +134,5 @@ export function analisa(linha: string, projetos: Project[], hoje = new Date()): 
     restantes.push(w);
   }
 
-  return { titulo: restantes.join(' ').trim(), projeto, prazo, ignorados };
+  return { titulo: restantes.join(' ').trim(), projeto, prazo, kind, ignorados };
 }

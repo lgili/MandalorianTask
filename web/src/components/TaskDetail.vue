@@ -2,10 +2,12 @@
 import { computed, ref, watch } from 'vue';
 import { onKeyStroke } from '@vueuse/core';
 import { X, Play, Pause, Check, Trash2, Clock } from 'lucide-vue-next';
+import ChipProjeto from './ChipProjeto.vue';
+import SeletorProjeto from './SeletorProjeto.vue';
 import type { Outcome, Session, TaskCard, Transition } from '../lib/types';
 import { KINDS, OUTCOMES } from '../lib/types';
 import * as api from '../lib/db';
-import { abreDetalhe, carregaQuadro, conclui, detalheId, move, pausa, projetos, rodando, tarefas } from '../lib/store';
+import { abreDetalhe, carregaQuadro, conclui, detalheId, move, pausa, rodando, tarefas } from '../lib/store';
 import { toast } from '../lib/toast';
 import { modaisAbertos } from '../lib/teclado';
 import { duracaoMin, fmtDur, fmtHM, hhmm, relativo } from '../lib/tempo';
@@ -66,9 +68,8 @@ const dataPrazo = computed({
           <div class="min-w-0 flex-1">
             <div class="mb-2 flex items-center gap-2">
               <span class="chip bg-surface-3 text-fg-muted">{{ STATUS_LABEL[tarefa.status] }}</span>
-              <span v-if="tarefa.project_code" class="chip"
-                :style="tarefa.project_color ? { background: `rgb(var(--${tarefa.project_color}) / .15)`, color: `rgb(var(--${tarefa.project_color}))` } : undefined">
-                {{ tarefa.project_code }}</span>
+              <ChipProjeto v-if="tarefa.project_id" :codigo="tarefa.project_code"
+                :nome="tarefa.project_name" :cor="tarefa.project_color" />
               <span v-if="rodandoEsta" class="chip bg-vivo/15 text-vivo-ink">● rodando {{ relogio }}</span>
             </div>
             <input v-model="titulo" @change="salva({ title: titulo.trim() || tarefa.title })"
@@ -77,7 +78,7 @@ const dataPrazo = computed({
               capturada durante <span class="text-reuniao">{{ tarefa.origem_title }}</span>
             </div>
           </div>
-          <button class="btn btn-ghost !p-1.5" @click="abreDetalhe(null)"><X class="h-4 w-4" /></button>
+          <button class="btn btn-ghost btn-icone" @click="abreDetalhe(null)"><X class="h-4 w-4" /></button>
         </div>
 
         <div class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
@@ -87,10 +88,17 @@ const dataPrazo = computed({
             <button v-else-if="tarefa.status !== 'feito'" class="btn btn-accent" @click="move(tarefa.id, 'fazendo')">
               <Play class="h-3.5 w-3.5" />Começar agora</button>
             <button v-if="tarefa.status === 'backlog'" class="btn" @click="move(tarefa.id, 'fila')">→ Fila</button>
-            <button v-if="tarefa.status !== 'feito'" class="btn" @click="concluindo = !concluindo">
+            <!-- Concluir é UM clique e assume "entregue", que é o caso comum.
+                 O formulário de desfecho vira um link fraco ao lado: o dado raro
+                 continua capturável sem virar pedágio no caminho quente. -->
+            <button v-if="tarefa.status !== 'feito'" class="btn"
+              @click="conclui(tarefa.id, 'entregue', null)">
               <Check class="h-3.5 w-3.5" />Concluir</button>
+            <button v-if="tarefa.status !== 'feito'"
+              class="text-[12px] text-fg-subtle underline decoration-dotted underline-offset-2 hover:text-fg"
+              @click="concluindo = !concluindo">não foi bem assim…</button>
             <button v-else class="btn" @click="move(tarefa.id, 'fila')">Reabrir</button>
-            <span class="med ml-auto text-[13px] font-semibold text-fg-muted">{{ fmtHM(total) }} no total</span>
+            <span class="med ml-auto text-[14px] font-semibold text-fg-muted">{{ fmtHM(total) }} no total</span>
           </div>
 
           <!-- concluir com desfecho -->
@@ -100,7 +108,7 @@ const dataPrazo = computed({
               <button v-for="o in OUTCOMES" :key="o.id" @click="outcome = o.id"
                 class="rounded-lg border px-3 py-2 text-left transition"
                 :class="outcome === o.id ? 'border-accent bg-accent/10' : 'border-rule hover:border-rule-strong'">
-                <div class="text-[13px] font-medium">{{ o.label }}</div>
+                <div class="text-[14px] font-medium">{{ o.label }}</div>
                 <div class="text-[11px] text-fg-subtle">{{ o.desc }}</div>
               </button>
             </div>
@@ -111,19 +119,16 @@ const dataPrazo = computed({
               <button class="btn" @click="concluindo = false">Cancelar</button>
             </div>
           </div>
-          <div v-else-if="tarefa.outcome" class="mb-5 rounded-lg border border-rule bg-surface px-3 py-2 text-[12.5px]">
+          <div v-else-if="tarefa.outcome" class="mb-5 rounded-lg border border-rule bg-surface px-3 py-2 text-[12px]">
             <span class="chip bg-ok/15 text-ok mr-2">{{ OUTCOMES.find((o) => o.id === tarefa!.outcome)?.label }}</span>
             <span class="text-fg-muted">{{ tarefa.outcome_note }}</span>
           </div>
 
           <!-- campos -->
           <div class="mb-5 grid grid-cols-2 gap-3">
-            <label><span class="rot mb-1 block">Projeto</span>
-              <select class="inp" :value="tarefa.project_id ?? ''"
-                @change="salva({ project_id: ($event.target as HTMLSelectElement).value ? Number(($event.target as HTMLSelectElement).value) : null })">
-                <option value="">— sem projeto —</option>
-                <option v-for="p in projetos" :key="p.id" :value="p.id">{{ p.name }}</option>
-              </select></label>
+            <div><span class="rot mb-1 block">Projeto</span>
+              <SeletorProjeto :model-value="tarefa.project_id"
+                @update:model-value="salva({ project_id: $event })" /></div>
             <label><span class="rot mb-1 block">Tipo</span>
               <select class="inp" :value="tarefa.kind" @change="salva({ kind: ($event.target as HTMLSelectElement).value as any })">
                 <option v-for="k in KINDS" :key="k.id" :value="k.id">{{ k.label }}</option>
@@ -131,7 +136,7 @@ const dataPrazo = computed({
             <label><span class="rot mb-1 block">Prazo</span>
               <input type="date" class="inp med" v-model="dataPrazo"></label>
             <div><span class="rot mb-1 block">Capturada</span>
-              <div class="med px-1 py-2 text-[12.5px] text-fg-muted">{{ relativo(tarefa.created_at) }}</div></div>
+              <div class="med px-1 py-2 text-[12px] text-fg-muted">{{ relativo(tarefa.created_at) }}</div></div>
           </div>
           <label class="mb-5 block"><span class="rot mb-1 block">Notas</span>
             <textarea v-model="notas" rows="3" class="inp resize-y" placeholder="contexto, links, decisões…"
@@ -144,8 +149,8 @@ const dataPrazo = computed({
             <div v-for="s in sessoes" :key="s.id" class="linha grid-cols-[auto_1fr_auto] !py-2">
               <span class="med text-[11px] text-fg-subtle">{{ s.started_at.slice(5, 10).split('-').reverse().join('/') }}</span>
               <span class="med text-[12px] text-fg-muted">{{ hhmm(s.started_at) }}–{{ s.ended_at ? hhmm(s.ended_at) : '…' }}
-                <span v-if="s.source === 'manual'" class="rot ml-2 !text-[9px]">manual</span></span>
-              <span class="med text-[12.5px] font-semibold" :class="s.ended_at ? 'text-fg' : 'text-vivo-ink'">
+                <span v-if="s.source === 'manual'" class="rot ml-2 !text-[11px]">manual</span></span>
+              <span class="med text-[12px] font-semibold" :class="s.ended_at ? 'text-fg' : 'text-vivo-ink'">
                 {{ s.ended_at ? fmtDur(duracaoMin(s.started_at, s.ended_at)) : decorrido(s.started_at, agora) }}</span>
             </div>
           </div>
@@ -153,7 +158,7 @@ const dataPrazo = computed({
           <!-- linha do tempo -->
           <div class="rot mb-2">Linha do tempo</div>
           <ol class="relative ml-1.5 border-l border-rule pl-4">
-            <li v-for="t in trans" :key="t.id" class="relative mb-3 text-[12.5px]">
+            <li v-for="t in trans" :key="t.id" class="relative mb-3 text-[12px]">
               <span class="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full"
                 :class="t.para === 'feito' ? 'bg-accent' : t.para === 'fazendo' ? 'bg-trabalho' : 'bg-surface-3'" />
               <span class="text-fg">{{ t.de ? `${STATUS_LABEL[t.de]} → ` : '' }}{{ STATUS_LABEL[t.para] }}</span>
@@ -163,7 +168,7 @@ const dataPrazo = computed({
         </div>
 
         <div class="flex items-center border-t border-rule px-6 py-3">
-          <button class="btn btn-ghost !text-danger" @click="apaga"><Trash2 class="h-3.5 w-3.5" />Excluir</button>
+          <button class="btn btn-ghost btn-perigo" @click="apaga"><Trash2 class="h-3.5 w-3.5" />Excluir</button>
           <span class="med ml-auto text-[11px] text-fg-subtle"><Clock class="mr-1 inline h-3 w-3" />esc fecha</span>
         </div>
       </aside>

@@ -51,7 +51,7 @@ onMounted(() => carregaDia());
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <div class="flex flex-none flex-wrap items-center gap-3 px-4 pb-2.5 pt-3">
+    <div class="flex flex-none flex-wrap items-center gap-3 px-6 pb-2.5 pt-3">
       <div class="flex items-center gap-0.5">
         <button class="grid h-6 w-6 place-items-center rounded text-fg-subtle hover:bg-surface-2 hover:text-fg"
           aria-label="Dia anterior" @click="carregaDia(addDays(diaAtual, -1))">
@@ -64,18 +64,18 @@ onMounted(() => carregaDia());
       </div>
 
       <div class="ml-auto flex items-baseline gap-1.5">
-        <span class="med text-[22px] font-semibold leading-none">{{ fmtHM(totaisDia.total) }}</span>
+        <span class="med text-[24px] font-semibold leading-none">{{ fmtHM(totaisDia.total) }}</span>
         <span class="rot">registradas</span>
       </div>
     </div>
 
     <!-- proporção do dia: uma barra, sem gráfico -->
-    <div v-if="proporcao.length" class="flex-none px-4 pb-3">
+    <div v-if="proporcao.length" class="flex-none px-6 pb-3">
       <div class="flex h-1.5 overflow-hidden rounded-full">
         <div v-for="p in proporcao" :key="p.k" :class="COR[p.k]" :style="{ width: p.pct + '%' }"
              :title="`${KIND[p.k]} ${fmtHM(p.min)}`" />
       </div>
-      <div class="mt-1.5 flex gap-4 font-mono text-[10.5px] text-fg-subtle">
+      <div class="mt-1.5 flex gap-4 font-mono text-[11px] text-fg-subtle">
         <span v-for="p in proporcao" :key="p.k" class="flex items-center gap-1.5">
           <i class="h-2 w-2 rounded-[2px]" :class="COR[p.k]" />
           {{ KIND[p.k] }} {{ fmtHM(p.min) }}
@@ -83,9 +83,9 @@ onMounted(() => carregaDia());
       </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
+    <div class="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
       <div class="max-w-[820px]">
-      <p v-if="!linhas.length" class="mt-16 text-center text-[13px] text-fg-subtle">
+      <p v-if="!linhas.length" class="mt-16 text-center text-[14px] text-fg-subtle">
         Nada registrado neste dia.<br>
         <span class="text-[12px]">Mover um card para <b>Fazendo</b> no Quadro começa a contar.</span>
       </p>
@@ -100,10 +100,10 @@ onMounted(() => carregaDia());
 
         <div class="flex min-w-0 items-center gap-2">
           <span class="h-3.5 w-[3px] flex-none rounded-full" :class="COR[l.s.kind]" />
-          <span class="truncate text-[13px]">{{ l.s.title }}</span>
-          <span v-if="l.s.project_code" class="med flex-none text-[10.5px] text-fg-subtle">
+          <span class="truncate text-[14px]">{{ l.s.title }}</span>
+          <span v-if="l.s.project_code" class="med flex-none text-[11px] text-fg-subtle">
             {{ l.s.project_code }}</span>
-          <span v-if="l.s.source === 'manual'" class="rot flex-none !text-[9.5px]">manual</span>
+          <span v-if="l.s.source === 'manual'" class="rot flex-none !text-[11px]">manual</span>
         </div>
 
         <div class="flex flex-none items-center gap-2">
@@ -113,7 +113,7 @@ onMounted(() => carregaDia());
             title="Corrigir horário" @click="editando = l.s">
             <Pencil class="h-3.5 w-3.5" />
           </button>
-          <span class="med w-[68px] text-right text-[13px] font-semibold"
+          <span class="med w-[68px] text-right text-[14px] font-semibold"
             :class="l.aberta ? 'text-accent-ink' : 'text-fg-muted'">{{ l.dur }}</span>
         </div>
       </div>

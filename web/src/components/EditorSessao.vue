@@ -48,7 +48,7 @@ function ajusta(alvo: EventTarget | null, set: (m: number) => void, ler: () => n
     <div class="painel w-full max-w-[400px] shadow-pop">
       <div class="border-b border-rule px-4 py-2.5">
         <div class="rot mb-0.5">corrigir sessão</div>
-        <div class="truncate text-[13.5px] font-semibold">{{ sessao.title }}</div>
+        <div class="truncate text-[14px] font-semibold">{{ sessao.title }}</div>
       </div>
 
       <div class="flex items-end gap-3 p-4">
@@ -62,14 +62,14 @@ function ajusta(alvo: EventTarget | null, set: (m: number) => void, ler: () => n
           <input class="inp med" type="time" :step="GRAO_MIN * 60" :value="hm(ate)"
                  @change="ajusta($event.target, (m) => (ate = m), () => ate)">
         </label>
-        <div class="med pb-2 text-[13px] font-semibold"
+        <div class="med pb-2 text-[14px] font-semibold"
              :class="ate > de ? 'text-fg-muted' : 'text-danger'">
           {{ ate > de ? fmtDur(ate - de) : 'inválido' }}
         </div>
       </div>
 
       <div class="flex items-center gap-2 border-t border-rule px-4 py-2.5">
-        <button class="btn !border-danger/40 !text-danger" @click="emit('excluir', sessao.id)">
+        <button class="btn btn-perigo" @click="emit('excluir', sessao.id)">
           <Trash2 class="h-3.5 w-3.5" />Excluir
         </button>
         <div class="flex-1" />

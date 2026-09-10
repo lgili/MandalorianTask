@@ -45,7 +45,7 @@ onMounted(carrega);
 
 <template>
   <div class="min-h-0 flex-1 overflow-y-auto">
-    <div class="flex max-w-[980px] flex-col gap-4 px-4 pb-10 pt-3">
+    <div class="flex max-w-[980px] flex-col gap-4 px-6 pb-10 pt-3">
       <div class="flex items-center gap-2">
         <button class="btn" @click="move(-1)">←</button>
         <span class="med text-[12px] text-fg-muted">
@@ -55,12 +55,12 @@ onMounted(carrega);
       </div>
 
       <div class="painel">
-        <div class="flex items-center gap-3 border-b border-rule px-4 py-2.5">
+        <div class="flex items-center gap-3 border-b border-rule px-6 py-2.5">
           <span class="rot">Horas por dia</span>
-          <span class="med ml-auto text-[13px] font-semibold">{{ fmtHM(total) }}</span>
+          <span class="med ml-auto text-[14px] font-semibold">{{ fmtHM(total) }}</span>
         </div>
         <div class="overflow-x-auto p-3"><GraficoBarras :dados="serie" /></div>
-        <div class="flex gap-4 border-t border-rule px-4 py-2 font-mono text-[10.5px] text-fg-muted">
+        <div class="flex gap-4 border-t border-rule px-6 py-2 font-mono text-[11px] text-fg-muted">
           <span><i class="mr-1.5 inline-block h-2 w-2 rounded-[2px] bg-trabalho" />trabalho</span>
           <span><i class="mr-1.5 inline-block h-2 w-2 rounded-[2px] bg-reuniao" />reunião</span>
           <span><i class="mr-1.5 inline-block h-2 w-2 rounded-[2px] bg-admin" />admin</span>
@@ -69,9 +69,9 @@ onMounted(carrega);
 
       <div class="grid gap-4 md:grid-cols-2">
         <div class="painel">
-          <div class="border-b border-rule px-4 py-2.5"><span class="rot">Reunião × trabalho</span></div>
+          <div class="border-b border-rule px-6 py-2.5"><span class="rot">Reunião × trabalho</span></div>
           <div class="p-4">
-            <div class="med mb-2 text-[22px] font-semibold leading-none"
+            <div class="med mb-2 text-[24px] font-semibold leading-none"
                  :class="pctReuniao >= 40 ? 'text-reuniao' : 'text-fg'">{{ pctReuniao }}%</div>
             <p class="text-[12px] leading-relaxed text-fg-subtle">
               {{ total ? `${fmtHM(totalReuniao)} em reunião nesta semana.` : 'Nada registrado nesta semana.' }}
@@ -80,12 +80,12 @@ onMounted(carrega);
         </div>
 
         <div class="painel">
-          <div class="border-b border-rule px-4 py-2.5">
+          <div class="border-b border-rule px-6 py-2.5">
             <span class="rot">Cycle time</span>
-            <span class="ml-2 text-[10.5px] text-fg-subtle">de começar até terminar</span>
+            <span class="ml-2 text-[11px] text-fg-subtle">de começar até terminar</span>
           </div>
           <div class="p-4">
-            <div class="med mb-2 text-[22px] font-semibold leading-none">
+            <div class="med mb-2 text-[24px] font-semibold leading-none">
               {{ medianaCycle != null ? `${medianaCycle}h` : '—' }}</div>
             <p class="text-[12px] leading-relaxed text-fg-subtle">
               mediana de {{ fluxo.length }} {{ fluxo.length === 1 ? 'tarefa concluída' : 'tarefas concluídas' }}
@@ -95,14 +95,14 @@ onMounted(carrega);
       </div>
 
       <div class="painel">
-        <div class="border-b border-rule px-4 py-2.5"><span class="rot">Por projeto</span></div>
-        <div class="px-4 py-1">
+        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Por projeto</span></div>
+        <div class="px-6 py-1">
           <p v-if="!porProjeto.length" class="py-3 text-[12px] text-fg-subtle">Nada nesta semana.</p>
           <div v-for="l in porProjeto" :key="String(l.project_id)"
-            class="flex items-baseline gap-3 border-b border-rule py-2 text-[13px] last:border-b-0">
+            class="flex items-baseline gap-3 border-b border-rule py-2 text-[14px] last:border-b-0">
             <span class="min-w-0 truncate">{{ l.project_name ?? '— sem projeto —' }}</span>
             <span class="med ml-auto text-[12px] text-fg-muted">{{ fmtHM(l.minutos) }}</span>
-            <span class="med w-9 text-right text-[10.5px] text-fg-subtle">
+            <span class="med w-9 text-right text-[11px] text-fg-subtle">
               {{ total ? Math.round((l.minutos / total) * 100) : 0 }}%</span>
           </div>
         </div>

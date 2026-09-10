@@ -140,9 +140,90 @@ const min = (s: Session) => s.ended_at
 export async function db(): Promise<never> { throw new Error('mock'); }
 export function dbErro(e: unknown): string { return e instanceof Error ? e.message : String(e); }
 
-export async function listProjects(): Promise<Project[]> { return projetos; }
-export async function createProject(): Promise<number> { return 0; }
-export async function updateProject(): Promise<void> {}
+export const PALETA = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
+export type Cor = typeof PALETA[number];
+
+export async function proximaCor(): Promise<Cor> {
+  const uso = new Map<string, number>();
+  for (const p of projetos) if (!p.archived_at && p.color) uso.set(p.color, (uso.get(p.color) ?? 0) + 1);
+  return PALETA.reduce((a, b) => ((uso.get(a) ?? 0) <= (uso.get(b) ?? 0) ? a : b));
+}
+
+export async function listProjects(incluirArquivados = false): Promise<Project[]> {
+  return projetos.filter((p) => incluirArquivados || !p.archived_at)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+let seqP = 100;
+export async function createProject(
+  name: string, code: string | null = null, color: string | null = null,
+): Promise<number> {
+  const nome = name.trim();
+  if (projetos.some((p) => p.name.toLowerCase() === nome.toLowerCase())) {
+    throw new Error('UNIQUE constraint failed: projects.name');
+  }
+  const p: Project = {
+    id: ++seqP, name: nome, code: code?.trim() || null,
+    color: color ?? await proximaCor(), archived_at: null, created_at: new Date().toISOString(),
+  };
+  projetos.push(p);
+  return p.id;
+}
+
+export async function updateProject(id: number, patch: Partial<Project>): Promise<void> {
+  const p = projetos.find((x) => x.id === id); if (p) Object.assign(p, patch);
+}
+
+export async function deleteProject(id: number): Promise<void> {
+  const i = projetos.findIndex((p) => p.id === id);
+  if (i < 0) return;
+  projetos.splice(i, 1);
+  for (const t of tarefas) if (t.project_id === id) t.project_id = null;
+}
+
+export async function pintaProjetosSemCor(): Promise<number> {
+  let n = 0;
+  for (const p of projetos) if (!p.color) { p.color = await proximaCor(); n++; }
+  return n;
+}
+
+export interface ProjetoResumo extends Project {
+  abertas: number; fazendo: number; feitas: number; total: number;
+  minutos: number; ultima_at: string | null;
+}
+
+export async function resumoProjetos(incluirArquivados = false): Promise<ProjetoResumo[]> {
+  const out = projetos.filter((p) => incluirArquivados || !p.archived_at).map((p) => {
+    const suas = tarefas.filter((t) => t.project_id === p.id);
+    const ids = new Set(suas.map((t) => t.id));
+    const sess = sessoes.filter((s) => ids.has(s.task_id));
+    const quandos = [...suas.map((t) => t.created_at), ...sess.map((s) => s.started_at)].sort();
+    return {
+      ...p,
+      abertas: suas.filter((t) => !t.archived_at && t.status !== 'feito').length,
+      fazendo: suas.filter((t) => !t.archived_at && t.status === 'fazendo').length,
+      feitas: suas.filter((t) => t.status === 'feito').length,
+      total: suas.length,
+      minutos: sess.reduce((a, x) => a + min(x), 0),
+      ultima_at: quandos.length ? quandos[quandos.length - 1] : null,
+    };
+  });
+  return out.sort((a, b) => (a.ultima_at ? 0 : 1) - (b.ultima_at ? 0 : 1)
+    || (b.ultima_at ?? '').localeCompare(a.ultima_at ?? '')
+    || a.name.localeCompare(b.name));
+}
+
+export async function tarefasDoProjeto(
+  projectId: number | null, incluirArquivadas = true,
+): Promise<TaskCard[]> {
+  return tarefas
+    .filter((t) => t.project_id === projectId && (incluirArquivadas || !t.archived_at))
+    .map(card);
+}
+
+export async function reatribuiProjeto(ids: number[], projectId: number | null): Promise<void> {
+  for (const t of tarefas) if (ids.includes(t.id)) t.project_id = projectId;
+}
 
 function card(t: Task): TaskCard {
   const p = proj(t.project_id);

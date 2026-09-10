@@ -44,13 +44,42 @@ export async function listProjects(incluirArquivados = false): Promise<Project[]
   );
 }
 
+/**
+ * Paleta fechada de cor de projeto.
+ *
+ * A coluna guarda o NOME do token ('p1'..'p6'), não um hex: a cor precisa
+ * mudar junto com o tema, e só o CSS sabe fazer isso. (A migration v1 chama a
+ * coluna de "hex sem '#'" — o comentário está errado desde o primeiro dia; o
+ * front sempre leu var(--pN). Não dá para editar a migration, então a verdade
+ * mora aqui.)
+ */
+export const PALETA = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
+export type Cor = typeof PALETA[number];
+
+/**
+ * A cor menos usada entre os projetos vivos.
+ *
+ * Ninguém escolhe cor ao criar um projeto. Perguntar isso no meio de uma
+ * reunião é a fricção que faz o campo ficar vazio para sempre — e cor vazia
+ * era o motivo de TODO projeto real nascer cinza enquanto o mock era colorido.
+ */
+export async function proximaCor(): Promise<Cor> {
+  const d = await db();
+  const rows = await d.select<Array<{ color: string; n: number }>>(
+    `SELECT color, COUNT(*) AS n FROM projects
+      WHERE archived_at IS NULL AND color IS NOT NULL GROUP BY color`,
+  );
+  const uso = new Map(rows.map((r) => [r.color, r.n]));
+  return PALETA.reduce((a, b) => ((uso.get(a) ?? 0) <= (uso.get(b) ?? 0) ? a : b));
+}
+
 export async function createProject(
   name: string, code: string | null = null, color: string | null = null,
 ): Promise<number> {
   const d = await db();
   const r = await d.execute(
     `INSERT INTO projects (name, code, color, created_at) VALUES ($1,$2,$3,$4)`,
-    [name.trim(), code?.trim() || null, color, agoraIso()],
+    [name.trim(), code?.trim() || null, color ?? await proximaCor(), agoraIso()],
   );
   return r.lastInsertId as number;
 }
@@ -59,6 +88,76 @@ export async function updateProject(
   id: number, patch: Partial<Pick<Project, 'name' | 'code' | 'color' | 'archived_at'>>,
 ): Promise<void> {
   await patchRow('projects', id, patch);
+}
+
+/**
+ * Apaga o projeto. As tarefas SOBREVIVEM e voltam para a Caixa — é o
+ * ON DELETE SET NULL da migration v1. Apagar projeto nunca pode apagar
+ * trabalho medido junto.
+ */
+export async function deleteProject(id: number): Promise<void> {
+  const d = await db();
+  await d.execute(`DELETE FROM projects WHERE id = $1`, [id]);
+}
+
+/**
+ * Dá cor aos projetos criados antes de a cor existir. Roda na abertura, uma
+ * vez por projeto sem cor, e é silencioso: é conserto de dado, não notícia.
+ */
+export async function pintaProjetosSemCor(): Promise<number> {
+  const d = await db();
+  const sem = await d.select<Array<{ id: number }>>(
+    `SELECT id FROM projects WHERE color IS NULL ORDER BY id`);
+  for (const p of sem) {
+    await d.execute(`UPDATE projects SET color = $1 WHERE id = $2`, [await proximaCor(), p.id]);
+  }
+  return sem.length;
+}
+
+/** Projeto + o que a lista e o cabeçalho precisam mostrar junto. */
+export interface ProjetoResumo extends Project {
+  abertas: number;
+  fazendo: number;
+  feitas: number;
+  total: number;
+  /** Minutos de sessões fechadas de TODAS as tarefas do projeto. */
+  minutos: number;
+  /** Último sinal de vida: captura de tarefa ou sessão. NULL = projeto vazio. */
+  ultima_at: string | null;
+}
+
+/**
+ * A lista de projetos com números.
+ *
+ * Ordenada por ATIVIDADE, não por nome: num seletor e numa sidebar, o que foi
+ * tocado ontem tem que vir antes do que dorme há três meses. Projeto sem
+ * nenhuma atividade vai para o fim, não some.
+ */
+export async function resumoProjetos(incluirArquivados = false): Promise<ProjetoResumo[]> {
+  const d = await db();
+  const rows = await d.select<ProjetoResumo[]>(
+    `SELECT p.*,
+       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id
+          AND t.archived_at IS NULL AND t.status <> 'feito')                       AS abertas,
+       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id
+          AND t.archived_at IS NULL AND t.status = 'fazendo')                      AS fazendo,
+       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id
+          AND t.status = 'feito')                                                  AS feitas,
+       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id)                    AS total,
+       COALESCE((SELECT SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440)
+                   FROM sessions s JOIN tasks t ON t.id = s.task_id
+                  WHERE t.project_id = p.id AND s.ended_at IS NOT NULL), 0)        AS minutos,
+       (SELECT MAX(quando) FROM (
+          SELECT MAX(t.created_at) AS quando FROM tasks t WHERE t.project_id = p.id
+          UNION ALL
+          SELECT MAX(s.started_at) FROM sessions s JOIN tasks t ON t.id = s.task_id
+           WHERE t.project_id = p.id
+       ))                                                                          AS ultima_at
+     FROM projects p
+     ${incluirArquivados ? '' : 'WHERE p.archived_at IS NULL'}
+     ORDER BY (ultima_at IS NULL), ultima_at DESC, p.name COLLATE NOCASE`,
+  );
+  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
 }
 
 // ───────────────────────────────── tarefas ─────────────────────────────────
@@ -86,6 +185,41 @@ export async function boardTasks(): Promise<TaskCard[]> {
   );
   // SUM sobre julianday devolve float; a UI só lida com minutos inteiros.
   return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
+}
+
+/**
+ * As tarefas de UM projeto — a pergunta que o app inteiro não sabia responder.
+ * `projectId === null` devolve a Caixa: o que foi capturado sem projeto.
+ *
+ * Inclui as arquivadas por padrão, ao contrário do quadro: a tela do projeto é
+ * o histórico dele, e esconder o que foi entregue há 20 dias esvazia justamente
+ * a parte que responde "esse projeto rendeu?".
+ */
+export async function tarefasDoProjeto(
+  projectId: number | null, incluirArquivadas = true,
+): Promise<TaskCard[]> {
+  const d = await db();
+  const rows = await d.select<TaskCard[]>(
+    `${TASK_SELECT}
+      WHERE ${projectId == null ? 't.project_id IS NULL' : 't.project_id = $1'}
+        ${incluirArquivadas ? '' : 'AND t.archived_at IS NULL'}
+      ORDER BY t.pos, t.created_at DESC`,
+    projectId == null ? [] : [projectId],
+  );
+  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
+}
+
+/**
+ * Joga N tarefas num projeto de uma vez. Reclassificar dez tarefas custava dez
+ * aberturas de drawer e ~40 cliques; aqui é uma chamada.
+ */
+export async function reatribuiProjeto(ids: number[], projectId: number | null): Promise<void> {
+  if (!ids.length) return;
+  const d = await db();
+  const marcas = ids.map((_, i) => `$${i + 2}`).join(',');
+  await d.execute(
+    `UPDATE tasks SET project_id = $1 WHERE id IN (${marcas})`, [projectId, ...ids],
+  );
 }
 
 /**

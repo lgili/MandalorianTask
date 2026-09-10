@@ -21,12 +21,38 @@ describe('projeto por prefixo', () => {
   it('casa pelo nome quando não há código', () => {
     expect(achaProjeto('cota', PROJETOS)?.id).toBe(3);
   });
-  it('prefixo ambíguo não casa — errar por não marcar é melhor que marcar errado', () => {
+  // Regra invertida de propósito. Antes, prefixo ambíguo devolvia null: a
+  // tarefa nascia órfã e o aviso era um risco num chip de 10px. Agora o `#`
+  // abre uma lista onde as duas opções aparecem, e esta função virou o
+  // fallback de quem submeteu sem olhar — aí o melhor palpite vale mais que
+  // a omissão silenciosa.
+  it('prefixo ambíguo devolve o melhor casamento, não null', () => {
     const ambiguos = [proj(1, 'Alfa', 'AA1'), proj(2, 'Alfa 2', 'AA2')];
-    expect(achaProjeto('aa', ambiguos)).toBeNull();
+    expect(achaProjeto('aa', ambiguos)?.id).toBe(1);
+    expect(achaProjeto('aa2', ambiguos)?.id).toBe(2);
   });
   it('sem match devolve null em vez de estourar', () => {
     expect(achaProjeto('zzz', PROJETOS)).toBeNull();
+  });
+});
+
+describe('tipo por token @', () => {
+  it('padrão é trabalho', () => {
+    expect(analisa('medir ripple', PROJETOS, TERCA).kind).toBe('trabalho');
+  });
+  it('@reuniao e @r marcam reunião', () => {
+    expect(analisa('daily @reuniao', PROJETOS, TERCA).kind).toBe('reuniao');
+    expect(analisa('daily @r', PROJETOS, TERCA).kind).toBe('reuniao');
+  });
+  it('@admin marca admin e some do título', () => {
+    const a = analisa('organizar datasheets @admin', PROJETOS, TERCA);
+    expect(a.kind).toBe('admin');
+    expect(a.titulo).toBe('organizar datasheets');
+  });
+  it('@ desconhecido vira texto, sem erro', () => {
+    const a = analisa('falar com @joao', PROJETOS, TERCA);
+    expect(a.kind).toBe('trabalho');
+    expect(a.titulo).toBe('falar com @joao');
   });
 });
 

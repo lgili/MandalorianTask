@@ -2,10 +2,15 @@
 import { computed, onMounted, ref } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import { useEventListener } from '@vueuse/core';
-import { Square, AlertTriangle, Plus } from 'lucide-vue-next';
+import { Square, AlertTriangle, Plus, Settings } from 'lucide-vue-next';
 import ToastHost from './components/ToastHost.vue';
 import TaskDetail from './components/TaskDetail.vue';
-import { abreDetalhe, carregaProjetos, carregaQuadro, carregaDia, rodando, pausa, tarefas, sessoesDia } from './lib/store';
+import QuickAdd from './components/QuickAdd.vue';
+import ChipProjeto from './components/ChipProjeto.vue';
+import {
+  abreDetalhe, abreQuickAdd, carregaProjetos, carregaQuadro, carregaDia, projetos,
+  quickAdd, rodando, pausa, tarefas, sessoesDia,
+} from './lib/store';
 import * as api from './lib/db';
 import { toast } from './lib/toast';
 import { agora, decorrido } from './lib/relogio';
@@ -15,15 +20,41 @@ import { addDays, dayKey } from './lib/tempo';
 const route = useRoute();
 const router = useRouter();
 const versao = __APP_VERSION__;
-const navs = router.getRoutes().filter((r) => r.meta?.tecla).sort((a, b) => a.meta.tecla.localeCompare(b.meta.tecla));
+const navs = router.getRoutes().filter((r) => r.meta?.tecla)
+  .sort((a, b) => a.meta.tecla.localeCompare(b.meta.tecla));
 
 const contagem = computed<Record<string, number | string>>(() => ({
+  '/projetos': projetos.value.length,
   '/backlog': tarefas.value.filter((t) => t.status === 'backlog').length,
   '/quadro': tarefas.value.filter((t) => t.status === 'fila' || t.status === 'fazendo').length,
   '/hoje': sessoesDia.value.length,
 }));
 
+/** Os seis projetos mais ativos. `resumoProjetos` já ordena por atividade. */
+const projetosVisiveis = computed(() => projetos.value.slice(0, 6));
+
+/** O projeto da tela atual, para o quick-add nascer já vinculado a ele. */
+const projetoDaTela = computed(() => {
+  if (route.name !== 'projeto') return null;
+  const id = Number(route.params.id);
+  return Number.isFinite(id) ? id : null;
+});
+
+/** Título da faixa de cima: nome do projeto quando se está dentro de um. */
+const tituloTela = computed(() => {
+  if (route.name !== 'projeto') return route.meta.titulo;
+  if (route.params.id === 'caixa') return 'Caixa';
+  return projetos.value.find((p) => p.id === Number(route.params.id))?.name ?? 'Projeto';
+});
+
 useEventListener(window, 'keydown', (e: KeyboardEvent) => {
+  // `n` abre a captura de qualquer tela — inclusive dentro de um projeto, e aí
+  // já vem vinculada a ele.
+  if (podeAtalho(e) && e.key === 'n') {
+    e.preventDefault();
+    abreQuickAdd(projetoDaTela.value);
+    return;
+  }
   for (const r of navs) {
     if (ehAtalhoDeFuga(e, r.meta.tecla) || (podeAtalho(e) && e.key === r.meta.tecla)) {
       e.preventDefault(); router.push(r.path); return;
@@ -46,10 +77,11 @@ async function carregaSemana(): Promise<void> {
 
 onMounted(async () => {
   try {
+    // Projetos criados antes de a cor existir nasciam cinza. Conserto silencioso.
+    await api.pintaProjetosSemCor();
     await carregaProjetos();
     await Promise.all([carregaQuadro(), carregaDia(), carregaSemana()]);
-    const n = await api.arquivaFeitos(14);
-    if (n > 0) toast.ok(`${n} ${n === 1 ? 'tarefa arquivada' : 'tarefas arquivadas'}`);
+    await api.arquivaFeitos(14);   // faxina é silenciosa: ninguém pediu esse aviso
     const id = Number(new URLSearchParams(location.search).get('tarefa'));
     if (id) abreDetalhe(id);
   } catch (e) {
@@ -63,19 +95,50 @@ onMounted(async () => {
     <aside class="flex min-w-0 flex-col border-r border-rule bg-surface-2">
       <div class="flex items-center gap-2.5 px-5 pb-3 pt-5">
         <div class="h-5 w-5 flex-none rounded-md bg-accent shadow-[0_0_16px_-2px_rgb(var(--glow)/.7)]" />
-        <div class="display text-[19px] leading-none max-[900px]:hidden">Bancada</div>
+        <div class="display text-[20px] leading-none max-[900px]:hidden">Bancada</div>
       </div>
 
-      <nav class="flex flex-1 flex-col gap-px px-3 pt-2">
-        <RouterLink v-for="r in navs" :key="r.path" :to="r.path"
-          class="grid grid-cols-[8px_1fr_auto] items-center gap-3 rounded-lg px-3 py-[7px] text-[13.5px] transition-colors
-                 max-[900px]:grid-cols-[8px] max-[900px]:justify-center"
-          :class="route.path === r.path ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg'">
-          <span class="h-1.5 w-1.5 rounded-full" :class="route.path === r.path ? 'bg-accent' : 'bg-rule-strong'" />
-          <span class="max-[900px]:hidden">{{ r.meta.titulo }}</span>
-          <span class="med text-[10.5px] text-fg-subtle max-[900px]:hidden">{{ contagem[r.path] ?? r.meta.tecla }}</span>
-        </RouterLink>
-      </nav>
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <nav class="flex flex-col gap-px px-3 pt-2">
+          <RouterLink v-for="r in navs" :key="r.path" :to="r.path"
+            class="grid grid-cols-[8px_1fr_auto] items-center gap-3 rounded-lg px-3 py-[7px] text-[14px] transition-colors
+                   max-[900px]:grid-cols-[8px] max-[900px]:justify-center"
+            :class="route.path === r.path ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg'">
+            <span class="h-1.5 w-1.5 rounded-full" :class="route.path === r.path ? 'bg-accent' : 'bg-rule-strong'" />
+            <span class="max-[900px]:hidden">{{ r.meta.titulo }}</span>
+            <span class="med text-[11px] text-fg-subtle max-[900px]:hidden">{{ contagem[r.path] || '' }}</span>
+          </RouterLink>
+        </nav>
+
+        <!-- ── projetos: separados da navegação por um rótulo de seção, senão
+             "Relatórios" e "Flyback rev C" parecem a mesma coisa ── -->
+        <div class="mt-5 px-3 max-[900px]:hidden">
+          <div class="flex items-center gap-2 px-3 pb-1">
+            <span class="rot">Projetos</span>
+            <button class="ml-auto rounded p-0.5 text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
+              title="Novo projeto" @click="router.push('/projetos')">
+              <Plus class="h-3 w-3" />
+            </button>
+          </div>
+
+          <RouterLink v-for="p in projetosVisiveis" :key="p.id" :to="`/projeto/${p.id}`"
+            class="grid grid-cols-[10px_1fr_auto] items-center gap-2.5 rounded-lg px-3 py-1 text-[12px] transition-colors"
+            :class="route.path === `/projeto/${p.id}` ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg'">
+            <ChipProjeto variante="ponto" :cor="p.color" />
+            <span class="truncate">{{ p.name }}</span>
+            <span v-if="p.abertas" class="med text-[11px] text-fg-subtle">{{ p.abertas }}</span>
+          </RouterLink>
+
+          <RouterLink v-if="projetos.length > 6" to="/projetos"
+            class="block px-3 py-1 font-mono text-[11px] text-fg-subtle hover:text-fg">
+            ⋯ ver todos ({{ projetos.length }})
+          </RouterLink>
+          <RouterLink v-if="!projetos.length" to="/projetos"
+            class="block px-3 py-1 text-[12px] text-fg-subtle hover:text-fg">
+            criar o primeiro →
+          </RouterLink>
+        </div>
+      </div>
 
       <div class="mx-4 border-t border-rule pb-2 pt-4 max-[900px]:hidden">
         <template v-if="rodando">
@@ -83,16 +146,16 @@ onMounted(async () => {
             <span class="relative flex h-1.5 w-1.5"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" /><span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" /></span>
             rodando
           </div>
-          <div class="mb-1 line-clamp-2 text-[12.5px] leading-snug text-fg">{{ rodando.title }}</div>
+          <div class="mb-1 line-clamp-2 text-[12px] leading-snug text-fg">{{ rodando.title }}</div>
           <div class="flex items-center gap-2">
-            <span class="display text-[26px] leading-none text-accent-ink">{{ relogio }}</span>
-            <button class="btn btn-ghost ml-auto !p-1.5" title="Pausar" @click="pausa"><Square class="h-3.5 w-3.5" /></button>
+            <span class="med text-[24px] leading-none text-accent-ink font-semibold tracking-[-0.02em]">{{ relogio }}</span>
+            <button class="btn btn-ghost btn-icone ml-auto" title="Pausar" @click="pausa"><Square class="h-3.5 w-3.5" /></button>
           </div>
         </template>
         <template v-else>
-          <div class="rot mb-1">esta semana</div>
+          <div class="rot mb-1">últimos 7 dias</div>
           <div class="flex items-baseline gap-2">
-            <span class="display text-[30px] leading-none">{{ concluidasSemana }}</span>
+            <span class="text-[32px] leading-none font-semibold tracking-[-0.02em]">{{ concluidasSemana }}</span>
             <span class="text-[12px] text-fg-muted">{{ concluidasSemana === 1 ? 'tarefa concluída' : 'tarefas concluídas' }}</span>
           </div>
         </template>
@@ -103,25 +166,31 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="flex items-center px-5 pb-3 font-mono text-[10px] text-fg-subtle max-[900px]:hidden">
-        <RouterLink to="/ajustes" class="hover:text-fg">tema</RouterLink>
+      <div class="flex items-center gap-1.5 px-5 pb-3 font-mono text-[11px] text-fg-subtle max-[900px]:hidden">
+        <RouterLink to="/ajustes" class="flex items-center gap-1 hover:text-fg">
+          <Settings class="h-3 w-3" />ajustes
+        </RouterLink>
         <span class="ml-auto opacity-70">v{{ versao }}</span>
       </div>
     </aside>
 
     <main class="flex min-w-0 flex-col overflow-hidden">
-      <div class="flex h-14 flex-none items-center gap-3 border-b border-rule px-8">
-        <span class="med text-[11px] uppercase tracking-[0.14em] text-fg-subtle">{{ route.meta.titulo }}</span>
+      <div class="flex h-14 flex-none items-center gap-3 border-b border-rule px-6">
+        <span class="truncate text-[16px] font-semibold tracking-[-0.01em]">{{ tituloTela }}</span>
         <div v-if="rodando && route.path !== '/'" class="ml-auto flex items-center gap-2 text-[12px] text-fg-muted">
           <span class="h-1.5 w-1.5 rounded-full bg-accent" />
           <span class="max-w-[260px] truncate">{{ rodando.title }}</span>
           <span class="med font-medium text-accent-ink">{{ relogio }}</span>
         </div>
-        <button class="btn btn-accent" :class="!(rodando && route.path !== '/') && 'ml-auto'" @click="router.push('/backlog')">
-          <Plus class="h-3.5 w-3.5" />Nova tarefa</button>
+        <!-- Antes este botão só navegava para /backlog. Agora ele cria. -->
+        <button class="btn btn-accent" :class="!(rodando && route.path !== '/') && 'ml-auto'"
+          @click="abreQuickAdd(projetoDaTela)">
+          <Plus class="h-3.5 w-3.5" />Nova tarefa
+          <span class="med ml-1 rounded bg-black/15 px-1 text-[11px] opacity-70">n</span>
+        </button>
       </div>
 
-      <div v-if="esquecida" class="flex flex-none items-center gap-2.5 border-b border-warn/40 bg-warn/10 px-8 py-1.5 text-[12.5px]">
+      <div v-if="esquecida" class="flex flex-none items-center gap-2.5 border-b border-warn/40 bg-warn/10 px-6 py-1.5 text-[12px]">
         <AlertTriangle class="h-3.5 w-3.5 flex-none text-warn" />
         <span>Esta sessão passa de 8 h — provavelmente ficou aberta da noite para o dia.</span>
         <button class="btn ml-auto" @click="pausa">Encerrar agora</button>
@@ -130,6 +199,7 @@ onMounted(async () => {
       <RouterView />
     </main>
 
+    <QuickAdd v-if="quickAdd" />
     <TaskDetail />
     <ToastHost />
   </div>

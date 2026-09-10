@@ -45,7 +45,7 @@ const barras = computed(() => {
     <g v-for="t in ticks" :key="t.min">
       <line :x1="ESQ - 6" :y1="t.y" :x2="W - DIR" :y2="t.y"
             :stroke="t.min === 0 ? 'rgb(var(--rule-strong))' : 'rgb(var(--rule))'" />
-      <text :x="ESQ - 11" :y="t.y + 3" text-anchor="end" font-family="IBM Plex Mono, monospace"
+      <text :x="ESQ - 11" :y="t.y + 3" text-anchor="end" font-family="JetBrains Mono Variable, JetBrains Mono, monospace"
             font-size="9.5" fill="rgb(var(--fg-subtle))">{{ t.rotulo }}</text>
     </g>
     <g v-for="b in barras" :key="b.rotulo">
@@ -53,9 +53,9 @@ const barras = computed(() => {
       <rect v-if="b.hR > 0" :x="b.x" :y="b.yR" :width="b.larg" :height="b.hR" fill="rgb(var(--reuniao))" />
       <rect v-if="b.hA > 0" :x="b.x" :y="b.yA" :width="b.larg" :height="b.hA" fill="rgb(var(--admin))" />
       <text v-if="b.total > 0" :x="b.cx" :y="b.topo - 5" text-anchor="middle"
-            font-family="IBM Plex Mono, monospace" font-size="9.5"
+            font-family="JetBrains Mono Variable, JetBrains Mono, monospace" font-size="9.5"
             fill="rgb(var(--fg-subtle))">{{ fmtHM(b.total) }}</text>
-      <text :x="b.cx" :y="BASE + 16" text-anchor="middle" font-family="IBM Plex Mono, monospace"
+      <text :x="b.cx" :y="BASE + 16" text-anchor="middle" font-family="JetBrains Mono Variable, JetBrains Mono, monospace"
             font-size="10" fill="rgb(var(--fg-muted))">{{ b.rotulo }}</text>
     </g>
   </svg>

@@ -7,7 +7,13 @@ import * as api from './db';
 import { dayKey, type DayKey } from './tempo';
 import { toast } from './toast';
 
-export const projetos = ref<Project[]>([]);
+/**
+ * Projetos vivos, já com contagem e horas. É `ProjetoResumo`, que estende
+ * `Project` — quem só precisa de id/nome/cor continua funcionando.
+ */
+export const projetos = ref<api.ProjetoResumo[]>([]);
+/** Inclui arquivados. Só Ajustes e a resolução de nome antigo precisam. */
+export const projetosArquivados = ref<Project[]>([]);
 export const tarefas = ref<TaskCard[]>([]);
 export const rodando = ref<SessionCard | null>(null);
 export const diaAtual = ref<DayKey>(dayKey());
@@ -24,7 +30,29 @@ export const porStatus = (s: TaskStatus) => computed(() =>
 export const backlog = computed(() => tarefas.value.filter((t) => t.status === 'backlog'));
 
 export async function carregaProjetos(): Promise<void> {
-  projetos.value = await api.listProjects();
+  const [vivos, todos] = await Promise.all([api.resumoProjetos(), api.listProjects(true)]);
+  projetos.value = vivos;
+  projetosArquivados.value = todos.filter((p) => p.archived_at);
+}
+
+/**
+ * Cria e devolve o projeto pronto para uso imediato.
+ *
+ * Devolve o objeto, não o id: quem cria um projeto no meio de uma captura
+ * precisa do nome e da cor na mesma tecla, para pintar o pill sem esperar
+ * outro round-trip.
+ */
+export async function criaProjeto(nome: string, codigo: string | null = null): Promise<Project | null> {
+  const n = nome.trim();
+  if (!n) return null;
+  try {
+    const id = await api.createProject(n, codigo);
+    await carregaProjetos();
+    return projetos.value.find((p) => p.id === id) ?? null;
+  } catch (e) {
+    toast.erro(api.dbErro(e));
+    return null;
+  }
 }
 
 /**
@@ -101,5 +129,27 @@ export async function pausa(): Promise<void> {
 }
 
 export function projetoDe(id: number | null): Project | undefined {
-  return id == null ? undefined : projetos.value.find((p) => p.id === id);
+  if (id == null) return undefined;
+  return projetos.value.find((p) => p.id === id)
+    ?? projetosArquivados.value.find((p) => p.id === id);
+}
+
+// ── captura global ────────────────────────────────────────────────────────
+// Uma superfície de criação só, chamável de qualquer tela. Antes eram quatro
+// botões que discordavam entre si — e o mais destacado deles não criava nada.
+
+/** Aberta = objeto com o contexto; null = fechada. */
+export const quickAdd = ref<{ projeto: number | null; status: TaskStatus } | null>(null);
+
+export function abreQuickAdd(projeto: number | null = null, status: TaskStatus = 'backlog'): void {
+  quickAdd.value = { projeto, status };
+}
+export function fechaQuickAdd(): void { quickAdd.value = null; }
+
+/**
+ * Recarrega tudo que uma tarefa nova pode ter mexido.
+ * Projetos entram junto porque a contagem da sidebar muda com a captura.
+ */
+export async function recarregaTudo(): Promise<void> {
+  await Promise.all([carregaQuadro(), carregaDia(), carregaProjetos()]);
 }

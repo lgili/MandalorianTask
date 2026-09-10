@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Clock, Repeat, Play, Pause, Check } from 'lucide-vue-next';
+import ChipProjeto from './ChipProjeto.vue';
 import type { TaskCard } from '../lib/types';
 import { fmtHM } from '../lib/tempo';
 import { agora, decorrido, minutosDecorridos } from '../lib/relogio';
@@ -13,8 +14,6 @@ const tempo = computed(() => props.rodandoDesde
   ? fmtHM(props.card.minutos + minutosDecorridos(props.rodandoDesde, agora.value))
   : fmtHM(props.card.minutos));
 const relogio = computed(() => props.rodandoDesde ? decorrido(props.rodandoDesde, agora.value) : null);
-
-const cor = computed(() => props.card.project_color ? `rgb(var(--${props.card.project_color}))` : null);
 
 const dias = computed(() => {
   if (!props.card.due_at) return null;
@@ -42,13 +41,13 @@ const prazo = computed(() => {
     <div v-if="rodandoDesde" class="pointer-events-none absolute inset-0 rounded-xl bg-accent/[0.06]" />
 
     <div class="relative flex items-start gap-2">
-      <span v-if="cor" class="mt-[5px] h-2.5 w-2.5 flex-none rounded-full"
-            :style="{ background: cor, boxShadow: `0 0 0 3px ${cor}22` }" />
-      <span v-else class="mt-[5px] h-2.5 w-2.5 flex-none rounded-full bg-surface-3" />
+      <span class="mt-[5px] flex-none">
+        <ChipProjeto variante="ponto" tamanho="md" :cor="card.project_color" />
+      </span>
       <div class="min-w-0 flex-1">
-        <button class="line-clamp-2 text-left text-[13px] font-semibold leading-[1.35] tracking-[-0.01em] hover:text-accent-ink"
+        <button class="line-clamp-2 text-left text-[14px] font-semibold leading-[1.35] tracking-[-0.01em] hover:text-accent-ink"
                 @click.stop="abreDetalhe(card.id)">{{ card.title }}</button>
-        <div v-if="card.origem_title" class="mt-0.5 truncate text-[10.5px] text-fg-subtle">
+        <div v-if="card.origem_title" class="mt-0.5 truncate text-[11px] text-fg-subtle">
           de {{ card.origem_title }}
         </div>
       </div>
@@ -56,19 +55,18 @@ const prazo = computed(() => {
       <!-- ações: aparecem no hover; a de rodando é permanente -->
       <div class="flex flex-none items-center gap-0.5 -mr-1 -mt-1"
            :class="rodandoDesde ? '' : 'opacity-0 transition-opacity group-hover:opacity-100'">
-        <button v-if="rodandoDesde" class="btn btn-ghost !p-1.5 !text-vivo-ink" title="Pausar"
+        <button v-if="rodandoDesde" class="btn btn-ghost btn-icone !text-vivo-ink" title="Pausar"
                 @click.stop="emit('pausar')"><Pause class="h-3.5 w-3.5" /></button>
-        <button v-else class="btn btn-ghost !p-1.5" title="Começar agora"
+        <button v-else class="btn btn-ghost btn-icone" title="Começar agora"
                 @click.stop="emit('iniciar', card.id)"><Play class="h-3.5 w-3.5" /></button>
-        <button v-if="card.status !== 'feito'" class="btn btn-ghost !p-1.5" title="Concluir"
+        <button v-if="card.status !== 'feito'" class="btn btn-ghost btn-icone" title="Concluir"
                 @click.stop="emit('concluir', card.id)"><Check class="h-3.5 w-3.5" /></button>
       </div>
     </div>
 
-    <div class="relative mt-2.5 flex items-center gap-2 font-mono text-[10px] text-fg-subtle">
-      <span v-if="card.project_code" class="chip"
-        :style="cor ? { background: `${cor}1f`, color: cor } : undefined"
-        :class="!cor && 'bg-surface-3 text-fg-muted'">{{ card.project_code }}</span>
+    <div class="relative mt-2.5 flex items-center gap-2 font-mono text-[11px] text-fg-subtle">
+      <ChipProjeto v-if="card.project_id" :codigo="card.project_code" :nome="card.project_name"
+        :cor="card.project_color" />
       <span v-if="card.kind === 'reuniao'" class="chip bg-reuniao/15 text-reuniao">reunião</span>
       <span v-else-if="card.kind === 'admin'" class="chip bg-surface-3 text-fg-muted">admin</span>
       <span v-if="prazo" class="flex items-center gap-1 font-medium"
@@ -78,7 +76,7 @@ const prazo = computed(() => {
       <span v-if="card.sessoes > 2" class="flex items-center gap-0.5" :title="`${card.sessoes} sessões`">
         <Repeat class="h-3 w-3" />{{ card.sessoes }}
       </span>
-      <span class="ml-auto text-[12.5px] font-semibold leading-none"
+      <span class="ml-auto text-[12px] font-semibold leading-none"
         :class="rodandoDesde ? 'text-vivo-ink' : 'text-fg-muted'">{{ relogio ?? tempo }}</span>
     </div>
   </div>
