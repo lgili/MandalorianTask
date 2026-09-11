@@ -600,6 +600,12 @@ export async function backlinks(path: string, nomeNorm: string, pathNorm: string
   return r.map(nota);
 }
 
+/** Todo `[[link]]` do vault, cru. Quem resolve alvo -> nota é lib/notas.ts. */
+export async function todasAsLigacoes(): Promise<Array<{ src: string; target: string }>> {
+  const d = await db();
+  return d.select(`SELECT src, target FROM note_links`);
+}
+
 /**
  * Busca de texto. Cada palavra vira prefixo entre aspas — "reun" acha
  * "reunião", e aspas neutralizam os operadores do FTS5 (AND, NEAR, -),

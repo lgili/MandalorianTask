@@ -7,6 +7,7 @@ import * as api from './db';
 import { codigoAuto } from './projetos';
 import { dayKey, type DayKey } from './tempo';
 import { toast } from './toast';
+import { emite } from './eventos';
 
 /**
  * Projetos vivos, já com contagem e horas. É `ProjetoResumo`, que estende
@@ -93,10 +94,28 @@ export async function carregaDia(key: DayKey = diaAtual.value): Promise<void> {
 }
 
 /** Move o card e recarrega. É a operação que produz o tempo. */
+/**
+ * Anuncia o que um movimento de coluna significou para o TEMPO. Quem entra
+ * em 'fazendo' abre sessão (e fecha a que estava aberta); quem sai, fecha.
+ * É a mesma regra do moveTask — aqui só vira evento para os plugins.
+ */
+function anunciaMovimento(id: number, de: TaskStatus | null, para: TaskStatus, rodavaAntes: number | null): void {
+  emite('tarefa:movida', { id, de, para });
+  if (para === 'fazendo') {
+    if (rodavaAntes != null && rodavaAntes !== id) emite('sessao:encerrada', { tarefa: rodavaAntes });
+    emite('sessao:iniciada', { tarefa: id, titulo: tarefas.value.find((t) => t.id === id)?.title ?? '' });
+  } else if (rodavaAntes === id) {
+    emite('sessao:encerrada', { tarefa: id });
+  }
+}
+
 export async function move(id: number, para: TaskStatus): Promise<void> {
+  const de = tarefas.value.find((t) => t.id === id)?.status ?? null;
+  const rodavaAntes = rodando.value?.task_id ?? null;
   try {
     await api.moveTask(id, para);
     await Promise.all([carregaQuadro(), carregaDia()]);
+    if (de !== para) anunciaMovimento(id, de, para, rodavaAntes);
   } catch (e) {
     toast.erro(api.dbErro(e));
   }
@@ -114,8 +133,11 @@ export async function captura(
 }
 
 export async function conclui(id: number, outcome: Outcome, nota: string | null): Promise<void> {
+  const de = tarefas.value.find((t) => t.id === id)?.status ?? null;
+  const rodavaAntes = rodando.value?.task_id ?? null;
   try {
     await api.concluiTarefa(id, outcome, nota);
+    if (de !== 'feito') anunciaMovimento(id, de, 'feito', rodavaAntes);
     await Promise.all([carregaQuadro(), carregaDia()]);
   } catch (e) {
     toast.erro(api.dbErro(e));
@@ -123,8 +145,10 @@ export async function conclui(id: number, outcome: Outcome, nota: string | null)
 }
 
 export async function pausa(): Promise<void> {
+  const rodavaAntes = rodando.value?.task_id ?? null;
   try {
     await api.pausa();
+    if (rodavaAntes != null) emite('sessao:encerrada', { tarefa: rodavaAntes });
     await Promise.all([carregaQuadro(), carregaDia()]);
   } catch (e) {
     toast.erro(api.dbErro(e));

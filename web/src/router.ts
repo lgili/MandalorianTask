@@ -32,6 +32,9 @@ const routes: RouteRecordRaw[] = [
     meta: { titulo: 'Hoje', tecla: '6', icone: 'clock' } },
   { path: '/relatorios', name: 'relatorios', component: () => import('./routes/Relatorios.vue'),
     meta: { titulo: 'Relatórios', tecla: '7', icone: 'chart' } },
+  // Painel registrado por plugin (ex.: o Grafo). O plugin monta o conteúdo.
+  { path: '/plugin/:plugin/:painel', name: 'plugin', component: () => import('./routes/Plugin.vue'),
+    meta: { titulo: 'Plugin', tecla: '', icone: 'puzzle' } },
   // Ajustes sai da navegação numerada e vive no rodapé da sidebar: é
   // configuração, não um destino de trabalho.
   { path: '/ajustes', name: 'ajustes', component: () => import('./routes/Ajustes.vue'),

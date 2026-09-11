@@ -74,6 +74,24 @@ O editor é CodeMirror 6 em modo *live preview*: a sintaxe some fora da linha do
 texto no disco nunca é reescrito para exibir. Renomear uma nota reescreve os `[[links]]` que
 apontavam para ela. Apagar move para `.trash/` dentro do vault, como o Obsidian.
 
+## Plugins
+
+Pastas em `<vault>/.bancada/plugins/<id>/` com `manifest.json` e `main.js`, como no Obsidian.
+Um plugin registra comandos (Ctrl+P), painéis, extensões de editor e estilos, e escuta eventos —
+inclusive os de **tempo** (`sessao:iniciada`, `sessao:encerrada`), que nenhum app de notas tem.
+
+Três vêm com o app e usam só a API pública, a mesma de um terceiro:
+
+| plugin | faz |
+|---|---|
+| **Nota do dia** | abre `Diário/AAAA-MM-DD.md`, já com as sessões que o quadro mediu hoje |
+| **Tarefas da nota** | as caixas `- [ ]` da nota aberta viram tarefas no projeto dela, sem duplicar |
+| **Grafo** | todas as notas e links, colorido por projeto; link para nota inexistente vira nó fantasma |
+
+Plugins da comunidade começam em **modo restrito**, e a confiança é por vault, gravada no app —
+um vault clonado de alguém nunca chega com plugin ligado. Guia completo para quem escreve plugin:
+**[docs/PLUGINS.md](docs/PLUGINS.md)**. Exemplo pronto: [`exemplos/plugins/destaca-todo/`](exemplos/plugins/destaca-todo/).
+
 ## Onde os dados moram
 
 | O quê | Onde |
@@ -91,6 +109,10 @@ O banco é um arquivo. Backup é copiar o arquivo.
 - **Nenhum componente toca arquivo.** Tudo passa por `src/lib/vault.ts`; e quem escreve nota
   passa por `src/lib/notas.ts`, que mantém disco, índice e evento andando juntos. Em
   `dev:mock` os dois (`db` e `vault`) viram versões em memória pelo mesmo alias do Vite.
+- **`web/src/lib/plugins/tipos.ts` é contrato público.** Não importa nada de dentro do app e
+  expõe DTOs próprios. Mudar algo lá que quebre plugin exige subir o número principal de
+  `VERSAO_API`. Os plugins de núcleo só podem usar o que está nele — se a API não bastar para
+  eles, não basta para ninguém.
 - **Nenhum componente faz regex sobre markdown.** Frontmatter, título, links e tags saem de
   `src/lib/markdown.ts`, que é testado — inclusive contra link dentro de bloco de código.
 - **Nenhum componente faz aritmética de data.** Tudo passa por `src/lib/tempo.ts`, que é

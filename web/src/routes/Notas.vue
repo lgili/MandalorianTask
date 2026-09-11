@@ -15,7 +15,7 @@ import EditorMarkdown from '../components/EditorMarkdown.vue';
 import type { NotaResumo, ResultadoBusca } from '../lib/types';
 import * as api from '../lib/db';
 import {
-  apagaNota, criaNota, criaVaultPadrao, escolheVault, leNota, linksPara, notas, renomeiaNota,
+  apagaNota, criaNota, criaVaultPadrao, escolheVault, leNota, linksPara, notaAberta, notas, renomeiaNota,
   resolve, salvaNota, segueLink, sincronizando, vaultAberto,
 } from '../lib/notas';
 import { nomeArquivo } from '../lib/markdown';
@@ -45,12 +45,16 @@ const entrada = ref<NotaResumo[]>([]);
 
 // ── abrir e salvar ────────────────────────────────────────────────────────
 
+/** Verdadeiro enquanto o save é DESTA tela — o eco dele não é "escrita de fora". */
+let meuSave = false;
+
 async function salvaAgora(): Promise<void> {
   if (!sujo.value || !carregado.value) return;
   const p = carregado.value;
   const t = texto.value;
   sujo.value = false;
   salvando.value = true;
+  meuSave = true;
   try {
     await salvaNota(p, t);
   } catch (e) {
@@ -58,6 +62,7 @@ async function salvaAgora(): Promise<void> {
     toast.erro(`Não salvou: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     salvando.value = false;
+    meuSave = false;
   }
 }
 /** 600 ms depois da última tecla: rápido o bastante para não perder nada. */
@@ -72,11 +77,13 @@ function editou(t: string): void {
 async function abre(p: string | null): Promise<void> {
   await salvaAgora();   // a nota anterior sai salva, sempre
   carregado.value = null;
+  notaAberta.value = null;
   entrada.value = [];
   if (!p) { texto.value = ''; return; }
   try {
     texto.value = await leNota(p);
     carregado.value = p;
+    notaAberta.value = p;
     sujo.value = false;
     entrada.value = await linksPara(p);
     emite('nota:aberta', { path: p });
@@ -95,13 +102,21 @@ watch(notas, async () => {
 });
 
 // Mudou no disco por fora (Obsidian, git): recarrega se não há edição pendente.
-const paraDeEscutar = escuta('nota:externa', async ({ path: p }) => {
+const paraDeEscutarExterna = escuta('nota:externa', async ({ path: p }) => {
   if (p !== carregado.value || sujo.value) return;
   texto.value = await leNota(p);
 });
+// Um PLUGIN escreveu na nota aberta: o editor adota o texto novo. Sem isto o
+// próximo autosave desta tela gravaria o texto antigo por cima do do plugin.
+const paraDeEscutarSalva = escuta('nota:salva', ({ path: p, texto: t }) => {
+  if (meuSave || p !== carregado.value || t === texto.value) return;
+  texto.value = t;
+  sujo.value = false;
+});
+const paraDeEscutar = () => { paraDeEscutarExterna(); paraDeEscutarSalva(); };
 
 onBeforeRouteLeave(async () => { await salvaAgora(); });
-onBeforeUnmount(() => { paraDeEscutar(); void salvaAgora(); });
+onBeforeUnmount(() => { paraDeEscutar(); notaAberta.value = null; void salvaAgora(); });
 
 // ── links ─────────────────────────────────────────────────────────────────
 

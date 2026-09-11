@@ -1,0 +1,8 @@
+{
+  "id": "destaca-todo",
+  "nome": "Destaca TODO",
+  "versao": "1.0.0",
+  "descricao": "Pinta TODO, FIXME e PERGUNTA no editor, e junta todos numa nota de pendências.",
+  "autor": "exemplo do Bancada",
+  "apiMinima": "1.0.0"
+}

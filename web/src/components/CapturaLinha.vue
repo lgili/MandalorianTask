@@ -17,6 +17,7 @@ import { analisa } from '../lib/captura';
 import * as api from '../lib/db';
 import { criaProjeto, projetoDe, projetos, recarregaTudo } from '../lib/store';
 import { toast } from '../lib/toast';
+import { emite } from '../lib/eventos';
 
 const props = withDefaults(defineProps<{
   /** Estar na tela do projeto JÁ é a atribuição — não se digita `#` ali. */
@@ -89,6 +90,7 @@ async function registra(paraFila: boolean): Promise<void> {
   try {
     const id = await api.capturaTarefa(a.titulo, projetoFinal.value?.id ?? null, a.kind, a.prazo);
     if (destino !== 'backlog') await api.moveTask(id, destino);
+    emite('tarefa:criada', { id, titulo: a.titulo, projeto: projetoFinal.value?.id ?? null });
     linha.value = '';
     tokenIni.value = null;
     // O projeto NÃO é zerado: despejar oito tarefas no mesmo projeto exigia

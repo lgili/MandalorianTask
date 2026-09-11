@@ -408,6 +408,9 @@ export async function backlinks(path: string, nomeNorm: string, pathNorm: string
     .filter((n) => n.path !== path && (n.links.includes(nomeNorm) || n.links.includes(pathNorm)))
     .sort((a, b) => b.mtime - a.mtime).map(resumo);
 }
+export async function todasAsLigacoes(): Promise<Array<{ src: string; target: string }>> {
+  return [...indice.values()].flatMap((n) => n.links.map((target) => ({ src: n.path, target })));
+}
 export async function buscaNotas(q: string, limite = 30): Promise<ResultadoBusca[]> {
   const termos = q.trim().split(/\s+/).filter(Boolean).map(semAcento);
   if (!termos.length) return [];

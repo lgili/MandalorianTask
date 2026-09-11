@@ -19,6 +19,8 @@ export const notas = ref<NotaResumo[]>([]);
 /** Caminho absoluto da pasta aberta. null = nenhum vault configurado. */
 export const vaultAberto = ref<string | null>(null);
 export const sincronizando = ref(false);
+/** A nota aberta na tela de Notas agora. Plugins perguntam por ela. */
+export const notaAberta = ref<string | null>(null);
 
 /** O que o índice guarda sobre um texto. Puro: mesmo texto, mesmo índice. */
 export function indiceDe(path: string, texto: string, arq: { mtime: number; size: number }): NotaIndice {

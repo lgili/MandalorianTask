@@ -152,6 +152,9 @@ Manhã no [[Ensaio térmico]] do flyback. O resistor do snubber chegou a 94 °C 
 dentro do previsto em [[Snubber RCD]], mas perto do limite.
 
 Tarde: ideia de estudar [[Topologia LLC]] para a próxima geração.
+
+- TODO pedir mais um termopar tipo K para o laboratório
+- PERGUNTA o LLC compensa abaixo de 100 W?
 `, 1);
 
 let seq = 0;

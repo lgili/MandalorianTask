@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import { useEventListener } from '@vueuse/core';
-import { Square, AlertTriangle, Plus, Settings } from 'lucide-vue-next';
+import { Square, AlertTriangle, Plus, Settings, Puzzle } from 'lucide-vue-next';
 import ToastHost from './components/ToastHost.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import QuickAdd from './components/QuickAdd.vue';
@@ -15,6 +15,8 @@ import {
 import { corPrevista } from './lib/projetos';
 import { abreVault, criaNota, escolheVault, notas, sincroniza, vaultAberto } from './lib/notas';
 import { registraComando } from './lib/comandos';
+import { iniciaPlugins } from './lib/plugins';
+import { paineis } from './lib/plugins/api';
 import { alternaTema } from './lib/theme';
 import * as api from './lib/db';
 import { toast } from './lib/toast';
@@ -73,8 +75,11 @@ const projetoDaTela = computed(() => {
   return Number.isFinite(id) ? id : null;
 });
 
-/** Título da faixa de cima: nome do projeto quando se está dentro de um. */
+/** Título da faixa de cima: nome do projeto (ou do painel) quando se está dentro de um. */
 const tituloTela = computed(() => {
+  if (route.name === 'plugin') {
+    return paineis.value.find((p) => p.plugin === route.params.plugin && p.id === route.params.painel)?.titulo ?? 'Plugin';
+  }
   if (route.name !== 'projeto') return route.meta.titulo;
   if (route.params.id === 'caixa') return 'Caixa';
   return projetos.value.find((p) => p.id === Number(route.params.id))?.name ?? 'Projeto';
@@ -147,7 +152,11 @@ onMounted(async () => {
     await api.arquivaFeitos(14);   // faxina é silenciosa: ninguém pediu esse aviso
     // O vault abre DEPOIS do quadro: indexar um vault grande não pode
     // atrasar a tela que se usa primeiro de manhã.
-    void abreVault().catch((e) => toast.aviso(`Vault indisponível: ${e instanceof Error ? e.message : String(e)}`));
+    // Plugins sobem DEPOIS do vault: os da comunidade moram dentro dele, e a
+    // confiança é por vault. Os de núcleo sobem mesmo sem vault aberto.
+    void abreVault()
+      .catch((e) => toast.aviso(`Vault indisponível: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => iniciaPlugins());
     const id = Number(new URLSearchParams(location.search).get('tarefa'));
     if (id) abreDetalhe(id);
   } catch (e) {
@@ -220,6 +229,20 @@ onMounted(async () => {
           <RouterLink v-if="!projetos.length" to="/projetos"
             class="block px-3 py-1 text-[12px] text-fg-subtle hover:text-fg">
             criar o primeiro →
+          </RouterLink>
+        </div>
+
+        <!-- ── painéis de plugin: só aparece se algum plugin registrou um ── -->
+        <div v-if="paineis.length" class="mt-5 px-3 max-[900px]:hidden">
+          <div class="px-3 pb-1"><span class="rot">Plugins</span></div>
+          <RouterLink v-for="p in paineis" :key="`${p.plugin}/${p.id}`"
+            :to="{ name: 'plugin', params: { plugin: p.plugin, painel: p.id } }"
+            class="grid grid-cols-[12px_1fr] items-center gap-2.5 rounded-lg px-3 py-1 text-[12px] transition-colors"
+            :class="route.name === 'plugin' && route.params.plugin === p.plugin && route.params.painel === p.id
+              ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg'"
+            :title="p.nomePlugin">
+            <Puzzle class="h-3 w-3" />
+            <span class="truncate">{{ p.titulo }}</span>
           </RouterLink>
         </div>
       </div>

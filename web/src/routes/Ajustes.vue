@@ -9,6 +9,7 @@ import { ArrowRight, FolderOpen, RefreshCw } from 'lucide-vue-next';
 import { projetos } from '../lib/store';
 import { escolheVault, notas, sincroniza, sincronizando, vaultAberto } from '../lib/notas';
 import { toast } from '../lib/toast';
+import AjustesPlugins from '../components/AjustesPlugins.vue';
 import { GRAO_MIN, tzAtual } from '../lib/tempo';
 import { TEMAS, aplicaTema, temaAtual } from '../lib/theme';
 
@@ -72,6 +73,8 @@ async function reindexa(): Promise<void> {
           </div>
         </div>
       </div>
+
+      <AjustesPlugins />
 
       <div class="painel">
         <div class="border-b border-rule px-6 py-2.5"><span class="rot">Como o tempo é medido</span></div>
