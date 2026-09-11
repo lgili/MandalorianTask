@@ -5,14 +5,24 @@
 // vive em /projetos, que é onde a mão já está.
 import { useRouter } from 'vue-router';
 import { ref } from 'vue';
-import { ArrowRight } from 'lucide-vue-next';
+import { ArrowRight, FolderOpen, RefreshCw } from 'lucide-vue-next';
 import { projetos } from '../lib/store';
+import { escolheVault, notas, sincroniza, sincronizando, vaultAberto } from '../lib/notas';
+import { toast } from '../lib/toast';
 import { GRAO_MIN, tzAtual } from '../lib/tempo';
 import { TEMAS, aplicaTema, temaAtual } from '../lib/theme';
 
 const router = useRouter();
 const tema = ref(temaAtual());
 function escolheTema(t: typeof tema.value): void { tema.value = t; aplicaTema(t); }
+
+async function trocaVault(): Promise<void> {
+  if (await escolheVault()) toast.ok(`Vault aberto: ${notas.value.length} notas`);
+}
+async function reindexa(): Promise<void> {
+  const r = await sincroniza();
+  toast.ok(r.lidas || r.removidas ? `${r.lidas} relidas, ${r.removidas} removidas do índice` : 'Índice já estava em dia');
+}
 </script>
 
 <template>
@@ -43,6 +53,27 @@ function escolheTema(t: typeof tema.value): void { tema.value = t; aplicaTema(t)
       </button>
 
       <div class="painel">
+        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Vault de notas</span></div>
+        <div class="space-y-3 px-6 py-3.5 text-[12px] text-fg-muted">
+          <p v-if="vaultAberto">
+            <code class="med break-all rounded bg-surface-2 px-1 py-0.5 text-[11px] text-fg">{{ vaultAberto }}</code>
+            <span class="ml-1">· {{ notas.length }} notas</span>
+          </p>
+          <p v-else>Nenhuma pasta aberta.</p>
+          <p class="leading-relaxed">
+            Os arquivos <code class="med">.md</code> são a verdade; o app guarda só um índice de
+            busca, que dá para jogar fora e refazer. Pode ser a mesma pasta do Obsidian.
+          </p>
+          <div class="flex gap-2">
+            <button class="btn" @click="trocaVault"><FolderOpen class="h-3.5 w-3.5" />{{ vaultAberto ? 'Trocar pasta' : 'Abrir pasta' }}</button>
+            <button v-if="vaultAberto" class="btn" :disabled="sincronizando" @click="reindexa">
+              <RefreshCw class="h-3.5 w-3.5" :class="sincronizando && 'animate-spin'" />Reindexar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="painel">
         <div class="border-b border-rule px-6 py-2.5"><span class="rot">Como o tempo é medido</span></div>
         <div class="space-y-2.5 px-6 py-3.5 text-[12px] leading-relaxed text-fg-muted">
           <p>
@@ -65,8 +96,12 @@ function escolheTema(t: typeof tema.value): void { tema.value = t; aplicaTema(t)
         <div class="border-b border-rule px-6 py-2.5"><span class="rot">Atalhos</span></div>
         <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-6 py-3.5 text-[12px] text-fg-muted">
           <span class="med text-fg">n</span><span>nova tarefa, de qualquer tela</span>
-          <span class="med text-fg">1…6</span><span>navegar</span>
-          <span class="med text-fg">alt+1…6</span><span>navegar mesmo com o cursor num campo</span>
+          <span class="med text-fg">ctrl+k</span><span>buscar em notas, projetos e tarefas</span>
+          <span class="med text-fg">ctrl+p</span><span>comandos — do app e dos plugins</span>
+          <span class="med text-fg">ctrl+alt+n</span><span>nova nota</span>
+          <span class="med text-fg">1…7</span><span>navegar</span>
+          <span class="med text-fg">alt+1…7</span><span>navegar mesmo com o cursor num campo</span>
+          <span class="med text-fg">[[</span><span>link para outra nota, no editor</span>
           <span class="med text-fg">#</span><span>projeto, na linha de captura</span>
           <span class="med text-fg">!</span><span>prazo: <span class="med">hoje · qui · 12/09 · +3d</span></span>
           <span class="med text-fg">@</span><span>tipo: <span class="med">reuniao · admin</span></span>

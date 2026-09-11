@@ -20,6 +20,9 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        // fs ANTES de persisted-scope: este restaura o escopo daquele.
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_persisted_scope::init())
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Bancada");
 }

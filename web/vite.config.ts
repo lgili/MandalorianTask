@@ -14,7 +14,10 @@ export default defineConfig({
       // MOCK=1 troca a camada SQL por uma em memória, para rodar a UI no
       // navegador sem Tauri. Só existe em dev: `pnpm dev:mock`.
       ...(process.env.MOCK
-        ? [{ find: './db.sql', replacement: path.resolve(__dirname, 'src/lib/db.mock.ts') }]
+        ? [
+            { find: './db.sql', replacement: path.resolve(__dirname, 'src/lib/db.mock.ts') },
+            { find: './vault.fs', replacement: path.resolve(__dirname, 'src/lib/vault.mock.ts') },
+          ]
         : []),
     ],
   },

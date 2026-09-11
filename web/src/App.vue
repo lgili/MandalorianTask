@@ -6,12 +6,16 @@ import { Square, AlertTriangle, Plus, Settings } from 'lucide-vue-next';
 import ToastHost from './components/ToastHost.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import QuickAdd from './components/QuickAdd.vue';
+import Paleta from './components/Paleta.vue';
 import ChipProjeto from './components/ChipProjeto.vue';
 import {
   abreDetalhe, abreQuickAdd, arrastando, carregaProjetos, carregaQuadro, carregaDia,
-  criaProjeto, projetos, quickAdd, rodando, pausa, soltaEmProjeto, tarefas, sessoesDia,
+  criaProjeto, paleta, projetos, quickAdd, rodando, pausa, soltaEmProjeto, tarefas, sessoesDia,
 } from './lib/store';
 import { corPrevista } from './lib/projetos';
+import { abreVault, criaNota, escolheVault, notas, sincroniza, vaultAberto } from './lib/notas';
+import { registraComando } from './lib/comandos';
+import { alternaTema } from './lib/theme';
 import * as api from './lib/db';
 import { toast } from './lib/toast';
 import { agora, decorrido } from './lib/relogio';
@@ -26,6 +30,7 @@ const navs = router.getRoutes().filter((r) => r.meta?.tecla)
 
 const contagem = computed<Record<string, number | string>>(() => ({
   '/projetos': projetos.value.length,
+  '/notas': notas.value.length,
   '/backlog': tarefas.value.filter((t) => t.status === 'backlog').length,
   '/quadro': tarefas.value.filter((t) => t.status === 'fila' || t.status === 'fazendo').length,
   '/hoje': sessoesDia.value.length,
@@ -75,7 +80,37 @@ const tituloTela = computed(() => {
   return projetos.value.find((p) => p.id === Number(route.params.id))?.name ?? 'Projeto';
 });
 
+// ── comandos do próprio app ───────────────────────────────────────────────
+// Registrados como qualquer plugin registraria: a paleta não distingue.
+async function novaNota(): Promise<void> {
+  if (!vaultAberto.value) { router.push('/notas'); return; }
+  const p = await criaNota('Sem título');
+  router.push({ name: 'notas', query: { n: p } });
+}
+const COMANDOS = [
+  { id: 'nova-tarefa', nome: 'Nova tarefa', tecla: 'n', executa: () => abreQuickAdd(projetoDaTela.value) },
+  { id: 'nova-nota', nome: 'Nova nota', tecla: 'ctrl+alt+n', executa: novaNota },
+  { id: 'novo-projeto', nome: 'Novo projeto', executa: () => router.push('/projetos') },
+  { id: 'buscar', nome: 'Buscar em tudo', tecla: 'ctrl+k', executa: () => { paleta.value = 'busca'; } },
+  { id: 'pausar', nome: 'Pausar a tarefa que está rodando', executa: () => pausa() },
+  { id: 'alternar-tema', nome: 'Alternar tema', executa: () => { alternaTema(); } },
+  { id: 'abrir-vault', nome: 'Abrir outra pasta como vault', executa: async () => { await escolheVault(); } },
+  { id: 'reindexar', nome: 'Reindexar o vault', executa: async () => {
+    const r = await sincroniza(); toast.ok(`${r.lidas} notas relidas`);
+  } },
+  ...navs.map((r) => ({ id: `ir:${r.path}`, nome: `Ir para ${r.meta.titulo}`, tecla: r.meta.tecla,
+    executa: () => router.push(r.path) })),
+];
+for (const c of COMANDOS) registraComando({ ...c, dono: 'bancada' });
+
 useEventListener(window, 'keydown', (e: KeyboardEvent) => {
+  // Ctrl+K / Ctrl+O busca, Ctrl+P comandos — de QUALQUER lugar, inclusive de
+  // dentro do editor: é o jeito de sair de uma nota sem tocar no mouse.
+  const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+  if (mod && (e.key === 'k' || e.key === 'o')) { e.preventDefault(); paleta.value = 'busca'; return; }
+  if (mod && e.key === 'p') { e.preventDefault(); paleta.value = 'comandos'; return; }
+  if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === 'n') { e.preventDefault(); void novaNota(); return; }
+
   // `n` abre a captura de qualquer tela — inclusive dentro de um projeto, e aí
   // já vem vinculada a ele.
   if (podeAtalho(e) && e.key === 'n') {
@@ -110,6 +145,9 @@ onMounted(async () => {
     await carregaProjetos();
     await Promise.all([carregaQuadro(), carregaDia(), carregaSemana()]);
     await api.arquivaFeitos(14);   // faxina é silenciosa: ninguém pediu esse aviso
+    // O vault abre DEPOIS do quadro: indexar um vault grande não pode
+    // atrasar a tela que se usa primeiro de manhã.
+    void abreVault().catch((e) => toast.aviso(`Vault indisponível: ${e instanceof Error ? e.message : String(e)}`));
     const id = Number(new URLSearchParams(location.search).get('tarefa'));
     if (id) abreDetalhe(id);
   } catch (e) {
@@ -246,6 +284,7 @@ onMounted(async () => {
     </main>
 
     <QuickAdd v-if="quickAdd" />
+    <Paleta v-if="paleta" :key="paleta" />
     <TaskDetail />
     <ToastHost />
   </div>

@@ -8,8 +8,9 @@ você confirma o dia que o app já montou.
 
 ## Estado
 
-`v0.1` — Projetos (lista + página), captura unificada, Quadro (kanban), Hoje (timeline),
-SQLite local, relatório da semana. Google Agenda entra na v0.2; vault de notas na v0.3.
+`v0.3` — Projetos, captura unificada, Quadro (kanban), Hoje (timeline), relatório da semana,
+e **Notas**: um vault de markdown compatível com o Obsidian, com `[[links]]`, backlinks e busca.
+Google Agenda segue para a v0.2.
 
 ## Como se registra
 
@@ -54,12 +55,31 @@ pnpm build                     # macOS: .app + .dmg   |   Windows: -setup.exe (N
 CI: uma tag `v*` dispara `.github/workflows/build.yml`, que monta macOS e Windows e anexa
 os instaladores ao Release.
 
+## Notas
+
+Um vault é uma pasta de arquivos `.md` — a mesma que o Obsidian abre. **O arquivo é a verdade**:
+o SQLite guarda só um índice (tabelas `notes`, `notes_fts`, `note_links`) que dá para apagar e
+refazer. Nada do que o app mostra sobre uma nota vem de outro lugar que não o próprio arquivo.
+
+| no editor | faz |
+|---|---|
+| `[[` | lista as notas; o link pode apontar para nota que ainda não existe — clicar cria |
+| `#tag` | vira pílula; clicar busca a tag |
+| `- [ ]` | vira caixa clicável |
+| `projeto: CÓDIGO` no frontmatter | liga a nota ao projeto — ela aparece na tela dele |
+
+**Ctrl+K** busca em notas, projetos e tarefas ao mesmo tempo. **Ctrl+P** lista os comandos.
+
+O editor é CodeMirror 6 em modo *live preview*: a sintaxe some fora da linha do cursor, mas o
+texto no disco nunca é reescrito para exibir. Renomear uma nota reescreve os `[[links]]` que
+apontavam para ela. Apagar move para `.trash/` dentro do vault, como o Obsidian.
+
 ## Onde os dados moram
 
 | O quê | Onde |
 |---|---|
 | Banco | `%APPDATA%\com.lgili.bancada\bancada.db` · `~/Library/Application Support/com.lgili.bancada/bancada.db` |
-| Notas (v0.3) | pasta do seu vault Obsidian, configurável |
+| Notas | a pasta que você escolher — pode ser o vault do Obsidian. O caminho fica em `meta.vault_path` |
 | Token do Google (v0.2) | arquivo `0600` no mesmo appdata — nunca em `localStorage` |
 
 O banco é um arquivo. Backup é copiar o arquivo.
@@ -68,6 +88,11 @@ O banco é um arquivo. Backup é copiar o arquivo.
 
 - **Nenhum componente escreve SQL.** Tudo passa por `src/lib/db.ts`, que é a única camada
   que fala com o banco — o mesmo papel que `lib/api.ts` tem no eBOM generator.
+- **Nenhum componente toca arquivo.** Tudo passa por `src/lib/vault.ts`; e quem escreve nota
+  passa por `src/lib/notas.ts`, que mantém disco, índice e evento andando juntos. Em
+  `dev:mock` os dois (`db` e `vault`) viram versões em memória pelo mesmo alias do Vite.
+- **Nenhum componente faz regex sobre markdown.** Frontmatter, título, links e tags saem de
+  `src/lib/markdown.ts`, que é testado — inclusive contra link dentro de bloco de código.
 - **Nenhum componente faz aritmética de data.** Tudo passa por `src/lib/tempo.ts`, que é
   testado. Fuso, virada de dia e sobreposição são onde os bugs mentem em silêncio.
 - Timestamps gravados em **UTC ISO-8601**; a fronteira do dia é calculada no fuso local.

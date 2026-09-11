@@ -7,7 +7,8 @@
 // A API é idêntica à de db.ts — o Vite troca um pelo outro por alias.
 
 import type {
-  Outcome, Project, Session, SessionCard, Task, TaskCard, TaskKind, TaskStatus, Totais, Transition,
+  NotaIndice, NotaResumo, Outcome, Project, ResultadoBusca, Session, SessionCard, Task, TaskCard,
+  TaskKind, TaskStatus, Totais, Transition,
 } from './types';
 import { dayRangeUtc, type DayKey } from './tempo';
 
@@ -371,3 +372,57 @@ export async function fluxoConcluidas(fromUtc: string, toUtc: string): Promise<F
 }
 export async function getMeta(): Promise<string | null> { return null; }
 export async function setMeta(): Promise<void> {}
+
+// ── notas (índice) ─────────────────────────────────────────────────────────
+const indice = new Map<string, NotaIndice>();
+const semAcento = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+function resumo(n: NotaIndice): NotaResumo {
+  const ref = n.projeto?.toLowerCase();
+  const p = ref ? (projetos.find((x) => x.code?.toLowerCase() === ref)
+    ?? projetos.find((x) => x.name.toLowerCase() === ref)) : undefined;
+  return {
+    path: n.path, title: n.title, mtime: n.mtime, projeto: n.projeto, tags: n.tags,
+    project_id: p?.id ?? null, project_name: p?.name ?? null, project_color: p?.color ?? null,
+  };
+}
+
+export async function notasIndexadas(): Promise<Array<{ path: string; mtime: number }>> {
+  return [...indice.values()].map((n) => ({ path: n.path, mtime: n.mtime }));
+}
+export async function indexaNota(n: NotaIndice): Promise<void> { indice.set(n.path, n); }
+export async function desindexaNota(path: string): Promise<void> { indice.delete(path); }
+export async function renomeiaNoIndice(de: string, para: string): Promise<void> {
+  const n = indice.get(de); if (!n) return;
+  indice.delete(de); indice.set(para, { ...n, path: para });
+}
+export async function limpaIndice(): Promise<void> { indice.clear(); }
+export async function listaNotas(): Promise<NotaResumo[]> {
+  return [...indice.values()].sort((a, b) => b.mtime - a.mtime).map(resumo);
+}
+export async function notasDoProjeto(projectId: number): Promise<NotaResumo[]> {
+  return (await listaNotas()).filter((n) => n.project_id === projectId);
+}
+export async function backlinks(path: string, nomeNorm: string, pathNorm: string): Promise<NotaResumo[]> {
+  return [...indice.values()]
+    .filter((n) => n.path !== path && (n.links.includes(nomeNorm) || n.links.includes(pathNorm)))
+    .sort((a, b) => b.mtime - a.mtime).map(resumo);
+}
+export async function buscaNotas(q: string, limite = 30): Promise<ResultadoBusca[]> {
+  const termos = q.trim().split(/\s+/).filter(Boolean).map(semAcento);
+  if (!termos.length) return [];
+  const out: Array<ResultadoBusca & { s: number }> = [];
+  for (const n of indice.values()) {
+    const t = semAcento(n.title); const b = semAcento(n.body);
+    // cada termo é prefixo de alguma palavra, como o `"x"*` do FTS5
+    const casa = (alvo: string, termo: string) => alvo.split(/[^\p{L}\p{N}]+/u).some((w) => w.startsWith(termo));
+    if (!termos.every((x) => casa(t, x) || casa(b, x))) continue;
+    const s = termos.reduce((acc, x) => acc + (casa(t, x) ? 5 : 0) + (casa(b, x) ? 1 : 0), 0);
+    const i = b.indexOf(termos[0]);
+    const ini = Math.max(0, i - 60);
+    const pedaco = i < 0 ? n.body.slice(0, 120)
+      : `${ini ? '…' : ''}${n.body.slice(ini, i)}\u0002${n.body.slice(i, i + termos[0].length)}\u0003${n.body.slice(i + termos[0].length, i + 90)}…`;
+    out.push({ path: n.path, title: n.title, trecho: pedaco, s });
+  }
+  return out.sort((a, b) => b.s - a.s).slice(0, limite).map(({ s: _s, ...r }) => r);
+}

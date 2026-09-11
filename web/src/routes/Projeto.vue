@@ -4,7 +4,7 @@
 // tela do projeto JÁ é a atribuição.
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, Archive, Trash2, Play } from 'lucide-vue-next';
+import { ArrowLeft, Archive, Trash2, Play, FileText, FilePlus } from 'lucide-vue-next';
 import CapturaLinha from '../components/CapturaLinha.vue';
 import type { TaskCard, TaskStatus } from '../lib/types';
 import { STATUS } from '../lib/types';
@@ -12,6 +12,7 @@ import * as api from '../lib/db';
 import { abreDetalhe, carregaProjetos, move, projetoDe, recarregaTudo, rodando } from '../lib/store';
 import { toast } from '../lib/toast';
 import { fmtHM, relativo } from '../lib/tempo';
+import { criaNota, notas, vaultAberto } from '../lib/notas';
 
 const route = useRoute();
 const router = useRouter();
@@ -108,6 +109,23 @@ async function apaga(): Promise<void> {
 async function moveERecarrega(t: TaskCard, para: TaskStatus): Promise<void> {
   await move(t.id, para);
   await carrega();
+}
+
+// ── notas ─────────────────────────────────────────────────────────────────
+// Filtro sobre a lista já carregada: o projeto de cada nota foi resolvido no
+// SQL (código ou nome, sem caixa), então aqui não há query nova.
+const notasDoProjeto = computed(() => (id.value == null ? [] : notas.value.filter((n) => n.project_id === id.value)));
+
+/**
+ * Nota nova já ligada ao projeto, dentro de uma pasta com o nome dele — o
+ * vínculo é o frontmatter (a pasta é só arrumação, dá para mover depois).
+ */
+async function novaNotaDoProjeto(): Promise<void> {
+  if (!vaultAberto.value) { router.push('/notas'); return; }
+  const p = projeto.value;
+  if (!p) return;
+  const path = await criaNota('Sem título', { pasta: `Projetos/${p.name}`, projeto: p.code ?? p.name });
+  router.push({ name: 'notas', query: { n: path } });
 }
 
 const prazoCurto = (iso: string): string =>
@@ -223,6 +241,35 @@ const prazoCurto = (iso: string): string =>
         <p v-if="!carregando && !itens.length" class="py-10 text-center text-[14px] text-fg-subtle">
           Nada aqui ainda.<br>
           <span class="text-[12px]">Digite acima e aperte enter.</span>
+        </p>
+      </div>
+
+      <!-- ── notas do projeto: o que se SABE sobre ele, ao lado do que se FAZ ── -->
+      <div v-if="!ehCaixa" class="mt-10">
+        <div class="mb-1 flex items-center gap-2 border-b border-rule pb-1">
+          <span class="rot flex items-center gap-1.5"><FileText class="h-3.5 w-3.5" />Notas</span>
+          <span class="med text-[11px] text-fg-subtle">{{ notasDoProjeto.length }}</span>
+          <button class="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-fg-subtle
+                         transition-colors hover:bg-surface-3 hover:text-fg"
+            @click="novaNotaDoProjeto"><FilePlus class="h-3.5 w-3.5" />nova nota</button>
+        </div>
+        <button v-for="n in notasDoProjeto" :key="n.path" type="button"
+          class="flex w-full items-baseline gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface"
+          @click="router.push({ name: 'notas', query: { n: n.path } })">
+          <span class="truncate text-[14px] hover:text-accent-ink">{{ n.title }}</span>
+          <span v-for="t in n.tags.slice(0, 3)" :key="t" class="flex-none text-[11px] text-accent-ink">#{{ t }}</span>
+          <span class="med ml-auto flex-none text-[11px] text-fg-subtle">{{ relativo(new Date(n.mtime).toISOString()) }}</span>
+        </button>
+        <p v-if="!notasDoProjeto.length" class="px-2 py-3 text-[12px] text-fg-subtle">
+          <template v-if="vaultAberto">
+            Nenhuma nota ligada a este projeto. Toda nota com
+            <code class="med rounded bg-surface-2 px-1">projeto: {{ projeto?.code ?? projeto?.name }}</code>
+            no topo aparece aqui.
+          </template>
+          <template v-else>
+            Abra um vault em <RouterLink to="/notas" class="text-accent-ink hover:underline">Notas</RouterLink>
+            para escrever atas, decisões e conhecimento do projeto.
+          </template>
         </p>
       </div>
     </div>

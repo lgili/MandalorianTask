@@ -101,3 +101,40 @@ export interface Totais {
   reuniao: number;
   admin: number;
 }
+
+// ── notas ──────────────────────────────────────────────────────────────────
+// O .md no disco é a verdade; estes tipos descrevem só o ÍNDICE dele.
+
+/** O que o indexador grava para uma nota. */
+export interface NotaIndice {
+  path: string;
+  title: string;
+  mtime: number;
+  size: number;
+  /** Valor cru de `projeto:` no frontmatter. */
+  projeto: string | null;
+  tags: string[];
+  /** Texto limpo para a busca. */
+  body: string;
+  /** Alvos de [[link]] já normalizados. */
+  links: string[];
+}
+
+/** Nota com o projeto resolvido — o que listas e cabeçalhos mostram. */
+export interface NotaResumo {
+  path: string;
+  title: string;
+  mtime: number;
+  projeto: string | null;
+  tags: string[];
+  project_id: number | null;
+  project_name: string | null;
+  project_color: string | null;
+}
+
+export interface ResultadoBusca {
+  path: string;
+  title: string;
+  /** Trecho com os termos entre \u0002 e \u0003, para a UI destacar. */
+  trecho: string;
+}

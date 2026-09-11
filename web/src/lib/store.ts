@@ -172,6 +172,12 @@ export function abreQuickAdd(projeto: number | null = null, status: TaskStatus =
 export function fechaQuickAdd(): void { quickAdd.value = null; }
 
 /**
+ * Paleta aberta: 'busca' procura notas, tarefas e projetos (Ctrl+K);
+ * 'comandos' lista o que o app e os plugins sabem fazer (Ctrl+P).
+ */
+export const paleta = ref<null | 'busca' | 'comandos'>(null);
+
+/**
  * Recarrega tudo que uma tarefa nova pode ter mexido.
  * Projetos entram junto porque a contagem da sidebar muda com a captura.
  */

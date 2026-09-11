@@ -5,7 +5,8 @@
 
 import Database from '@tauri-apps/plugin-sql';
 import type {
-  Outcome, Project, Session, SessionCard, Task, TaskCard, TaskKind, TaskStatus, Totais, Transition,
+  NotaIndice, NotaResumo, Outcome, Project, ResultadoBusca, Session, SessionCard, Task, TaskCard,
+  TaskKind, TaskStatus, Totais, Transition,
 } from './types';
 import { agoraIso, dayRangeUtc, tzAtual, type DayKey } from './tempo';
 
@@ -496,6 +497,126 @@ export async function fluxoConcluidas(fromUtc: string, toUtc: string): Promise<F
     lead_h: Math.round(r.lead_h * 10) / 10,
     cycle_h: r.cycle_h == null ? null : Math.round(r.cycle_h * 10) / 10,
   }));
+}
+
+// ───────────────────────────────── notas ─────────────────────────────────
+// Só o ÍNDICE. Quem escreve aqui é o indexador (lib/notas.ts); a UI lê.
+
+/**
+ * Nota + projeto resolvido pelo valor cru do frontmatter.
+ *
+ * Código ganha de nome: se um projeto se CHAMA "CF03B04" e outro tem esse
+ * CÓDIGO, `projeto: CF03B04` é o segundo. Isso é o COALESCE — e não um
+ * ORDER BY, porque o SQLite recusa coluna correlacionada no ORDER BY de uma
+ * subquery escalar ("no such column: n.projeto"), embora aceite no WHERE.
+ */
+const NOTA_SELECT = `
+  SELECT x.*, p.name AS project_name, p.color AS project_color FROM (
+    SELECT n.path, n.title, n.mtime, n.projeto, n.tags,
+           COALESCE(
+             (SELECT q.id FROM projects q WHERE q.code = n.projeto COLLATE NOCASE LIMIT 1),
+             (SELECT q.id FROM projects q WHERE q.name = n.projeto COLLATE NOCASE LIMIT 1)
+           ) AS project_id
+      FROM notes n) x
+  LEFT JOIN projects p ON p.id = x.project_id`;
+
+type LinhaNota = Omit<NotaResumo, 'tags'> & { tags: string | null };
+const nota = (r: LinhaNota): NotaResumo => ({ ...r, tags: r.tags ? JSON.parse(r.tags) : [] });
+
+export async function notasIndexadas(): Promise<Array<{ path: string; mtime: number }>> {
+  const d = await db();
+  return d.select(`SELECT path, mtime FROM notes`);
+}
+
+/**
+ * Grava uma nota no índice. Três tabelas, sem transação: o plugin-sql não
+ * garante a mesma conexão entre chamadas, e um índice meio escrito se
+ * conserta no próximo scan — é justamente para isso que ele é reconstruível.
+ */
+export async function indexaNota(n: NotaIndice): Promise<void> {
+  const d = await db();
+  await d.execute(
+    `INSERT INTO notes (path, title, mtime, size, projeto, tags, indexed_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT(path) DO UPDATE SET
+       title = excluded.title, mtime = excluded.mtime, size = excluded.size,
+       projeto = excluded.projeto, tags = excluded.tags, indexed_at = excluded.indexed_at`,
+    [n.path, n.title, n.mtime, n.size, n.projeto, JSON.stringify(n.tags), agoraIso()],
+  );
+  await d.execute(`DELETE FROM notes_fts WHERE path = $1`, [n.path]);
+  await d.execute(`INSERT INTO notes_fts (path, title, body) VALUES ($1,$2,$3)`, [n.path, n.title, n.body]);
+  await d.execute(`DELETE FROM note_links WHERE src = $1`, [n.path]);
+  if (n.links.length) {
+    const vals = n.links.map((_, i) => `($1, $${i + 2})`).join(',');
+    await d.execute(`INSERT OR IGNORE INTO note_links (src, target) VALUES ${vals}`, [n.path, ...n.links]);
+  }
+}
+
+export async function desindexaNota(path: string): Promise<void> {
+  const d = await db();
+  await d.execute(`DELETE FROM notes WHERE path = $1`, [path]);   // links caem junto (CASCADE)
+  await d.execute(`DELETE FROM notes_fts WHERE path = $1`, [path]);
+}
+
+export async function renomeiaNoIndice(de: string, para: string): Promise<void> {
+  const d = await db();
+  await d.execute(`UPDATE notes SET path = $2 WHERE path = $1`, [de, para]);   // links: ON UPDATE CASCADE
+  await d.execute(`UPDATE notes_fts SET path = $2 WHERE path = $1`, [de, para]);
+}
+
+/** Trocar de vault começa do zero: o índice do anterior não vale nada aqui. */
+export async function limpaIndice(): Promise<void> {
+  const d = await db();
+  await d.execute(`DELETE FROM notes`);
+  await d.execute(`DELETE FROM notes_fts`);
+}
+
+export async function listaNotas(): Promise<NotaResumo[]> {
+  const d = await db();
+  return (await d.select<LinhaNota[]>(`${NOTA_SELECT} ORDER BY x.mtime DESC`)).map(nota);
+}
+
+export async function notasDoProjeto(projectId: number): Promise<NotaResumo[]> {
+  const d = await db();
+  const r = await d.select<LinhaNota[]>(`SELECT * FROM (${NOTA_SELECT}) WHERE project_id = $1 ORDER BY mtime DESC`,
+    [projectId]);
+  return r.map(nota);
+}
+
+/**
+ * Quem aponta para esta nota. O link pode ter sido escrito pelo nome do
+ * arquivo (`[[Snubber RCD]]`) ou pelo caminho (`[[Técnico/Snubber RCD]]`) —
+ * o Obsidian aceita os dois, então os dois contam.
+ */
+export async function backlinks(path: string, nomeNorm: string, pathNorm: string): Promise<NotaResumo[]> {
+  const d = await db();
+  const r = await d.select<LinhaNota[]>(
+    `SELECT * FROM (${NOTA_SELECT})
+      WHERE path IN (SELECT src FROM note_links WHERE target IN ($1, $2))
+        AND path <> $3
+      ORDER BY mtime DESC`,
+    [nomeNorm, pathNorm, path],
+  );
+  return r.map(nota);
+}
+
+/**
+ * Busca de texto. Cada palavra vira prefixo entre aspas — "reun" acha
+ * "reunião", e aspas neutralizam os operadores do FTS5 (AND, NEAR, -),
+ * que num campo de busca de usuário só produzem erro de sintaxe.
+ * Título pesa 5× o corpo: achar no nome é quase sempre o que se queria.
+ */
+export async function buscaNotas(q: string, limite = 30): Promise<ResultadoBusca[]> {
+  const termos = q.trim().split(/\s+/).filter(Boolean);
+  if (!termos.length) return [];
+  const match = termos.map((t) => `"${t.replace(/"/g, '""')}"*`).join(' ');
+  const d = await db();
+  return d.select<ResultadoBusca[]>(
+    `SELECT path, title, snippet(notes_fts, 2, char(2), char(3), '…', 14) AS trecho
+       FROM notes_fts WHERE notes_fts MATCH $1
+      ORDER BY bm25(notes_fts, 0, 5.0, 1.0) LIMIT $2`,
+    [match, limite],
+  );
 }
 
 // ──────────────────────────────── meta ────────────────────────────────

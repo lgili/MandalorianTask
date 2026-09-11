@@ -130,7 +130,56 @@ ALTER TABLE tasks ADD COLUMN outcome TEXT
   CHECK (outcome IS NULL OR outcome IN ('entregue','descartada','repassada','revertida'));
 ALTER TABLE tasks ADD COLUMN outcome_note TEXT;
 "#,
+    },
+    Migration {
+        version: 3,
+        description: "notes: índice do vault markdown + FTS5 + links",
+        kind: MigrationKind::Up,
+        sql: r#"
+-- ─────────────────────────────────────────────────────────────────────────
+-- NOTAS — índice RECONSTRUÍVEL dos .md do vault.
+--
+-- O ARQUIVO é a verdade. Apagar estas três tabelas e reindexar tem que dar
+-- exatamente o mesmo resultado; é por isso que nada aqui é editado pela UI,
+-- só pelo indexador. Nota que o Obsidian cria por fora aparece aqui no
+-- próximo scan, e nota apagada aqui não apaga arquivo nenhum.
+-- ─────────────────────────────────────────────────────────────────────────
+CREATE TABLE notes (
+  path       TEXT PRIMARY KEY,   -- relativo à raiz do vault, sempre com '/'
+  title      TEXT NOT NULL,      -- frontmatter `title` > primeiro `# ` > nome do arquivo
+  mtime      INTEGER NOT NULL,   -- ms; o scan só relê o que mudou
+  size       INTEGER NOT NULL,
+  -- Valor CRU do frontmatter `projeto:` (código ou nome). Resolvido para um
+  -- projeto na LEITURA, não aqui: renomear o código de um projeto não pode
+  -- exigir reindexar o vault inteiro.
+  projeto    TEXT,
+  tags       TEXT,               -- JSON array, sem o '#'
+  indexed_at TEXT NOT NULL
+);
+CREATE INDEX idx_notes_projeto ON notes(projeto COLLATE NOCASE);
+
+-- remove_diacritics 2: buscar "reuniao" acha "reunião". Em português, sem
+-- isto a busca é inútil.
+CREATE VIRTUAL TABLE notes_fts USING fts5(
+  path UNINDEXED,
+  title,
+  body,
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+
+-- LINKS — cada [[alvo]] de cada nota.
+--
+-- `target` guarda o texto do link normalizado (minúsculo, sem .md, sem
+-- #seção, sem |apelido), NÃO o path resolvido. Assim, criar a nota-alvo
+-- depois faz o link "acender" sozinho, sem reindexar a nota de origem —
+-- é o comportamento do Obsidian, e é o que torna o link barato de escrever.
+CREATE TABLE note_links (
+  src    TEXT NOT NULL REFERENCES notes(path) ON DELETE CASCADE ON UPDATE CASCADE,
+  target TEXT NOT NULL,
+  PRIMARY KEY (src, target)
+);
+CREATE INDEX idx_links_target ON note_links(target);
+"#,
     }]
-    // Próximas migrations entram AQUI, nunca editando as de cima:
-    //   v3 (0.3): notes + notes_fts (FTS5) — índice do vault de markdown.
+    // Próximas migrations entram AQUI, nunca editando as de cima.
 }
