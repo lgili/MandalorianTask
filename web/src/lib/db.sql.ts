@@ -8,7 +8,7 @@ import type {
   NotaIndice, NotaResumo, Outcome, Project, ResultadoBusca, Session, SessionCard, Task, TaskCard,
   TaskKind, TaskStatus, Totais, Transition,
 } from './types';
-import { agoraIso, dayRangeUtc, tzAtual, type DayKey } from './tempo';
+import { agoraIso, dayRangeUtc, tzAtual, type DayKey } from './time';
 
 let _db: Database | null = null;
 

@@ -7,9 +7,9 @@
 // quando há resultados. Enter rápido não pode fabricar projeto.
 import { computed, ref, watch } from 'vue';
 import { Plus, Inbox } from 'lucide-vue-next';
-import ChipProjeto from './ChipProjeto.vue';
+import ChipProjeto from './ProjectChip.vue';
 import type { Project } from '../lib/types';
-import { podeCriar, ranqueia } from '../lib/projetos';
+import { podeCriar, ranqueia } from '../lib/projects';
 import { projetos } from '../lib/store';
 
 const props = withDefaults(defineProps<{

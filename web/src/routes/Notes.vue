@@ -9,19 +9,19 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { useDebounceFn } from '@vueuse/core';
 import { FolderOpen, FilePlus, Search, Trash2, X, Link2, FolderPlus } from 'lucide-vue-next';
-import ArvoreNotas from '../components/ArvoreNotas.vue';
-import ChipProjeto from '../components/ChipProjeto.vue';
-import EditorMarkdown from '../components/EditorMarkdown.vue';
+import ArvoreNotas from '../components/NoteTree.vue';
+import ChipProjeto from '../components/ProjectChip.vue';
+import EditorMarkdown from '../components/MarkdownEditor.vue';
 import type { NotaResumo, ResultadoBusca } from '../lib/types';
 import * as api from '../lib/db';
 import {
   apagaNota, criaNota, criaVaultPadrao, escolheVault, leNota, linksPara, notaAberta, notas, renomeiaNota,
   resolve, salvaNota, segueLink, sincronizando, vaultAberto,
-} from '../lib/notas';
+} from '../lib/notes';
 import { nomeArquivo } from '../lib/markdown';
-import { emite, escuta } from '../lib/eventos';
+import { emite, escuta } from '../lib/events';
 import { toast } from '../lib/toast';
-import { relativo } from '../lib/tempo';
+import { relativo } from '../lib/time';
 
 const route = useRoute();
 const router = useRouter();

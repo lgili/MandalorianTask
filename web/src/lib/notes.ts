@@ -13,7 +13,7 @@ import {
   alvosDe, arquivoPara, nomeArquivo, normalizaAlvo, projetoDe, separaFrontmatter, tagsDe,
   textoParaBusca, tituloDe, trocaAlvo,
 } from './markdown';
-import { emite } from './eventos';
+import { emite } from './events';
 
 export const notas = ref<NotaResumo[]>([]);
 /** Caminho absoluto da pasta aberta. null = nenhum vault configurado. */

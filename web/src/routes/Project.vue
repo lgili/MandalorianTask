@@ -5,14 +5,14 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, Archive, Trash2, Play, FileText, FilePlus } from 'lucide-vue-next';
-import CapturaLinha from '../components/CapturaLinha.vue';
+import CapturaLinha from '../components/CaptureLine.vue';
 import type { TaskCard, TaskStatus } from '../lib/types';
 import { STATUS } from '../lib/types';
 import * as api from '../lib/db';
 import { abreDetalhe, carregaProjetos, move, projetoDe, recarregaTudo, rodando } from '../lib/store';
 import { toast } from '../lib/toast';
-import { fmtHM, relativo } from '../lib/tempo';
-import { criaNota, notas, vaultAberto } from '../lib/notas';
+import { fmtHM, relativo } from '../lib/time';
+import { criaNota, notas, vaultAberto } from '../lib/notes';
 
 const route = useRoute();
 const router = useRouter();

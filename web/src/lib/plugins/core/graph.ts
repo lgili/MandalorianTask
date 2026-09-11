@@ -5,7 +5,7 @@
 // SVG e uma simulação de forças simples, sem biblioteca — é também o exemplo
 // de painel com DOM puro que a documentação de plugins aponta.
 
-import type { Bancada, DefinicaoPlugin, Manifesto } from '../tipos';
+import type { Bancada, DefinicaoPlugin, Manifesto } from '../types';
 
 export const manifesto: Manifesto = {
   id: 'grafo',

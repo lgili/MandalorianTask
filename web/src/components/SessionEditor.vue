@@ -3,8 +3,8 @@ import { ref, watch } from 'vue';
 import { Trash2 } from 'lucide-vue-next';
 import { onKeyStroke } from '@vueuse/core';
 import type { SessionCard } from '../lib/types';
-import { modaisAbertos } from '../lib/teclado';
-import { minutosDoDia, utcDe, fmtDur, GRAO_MIN } from '../lib/tempo';
+import { modaisAbertos } from '../lib/keyboard';
+import { minutosDoDia, utcDe, fmtDur, GRAO_MIN } from '../lib/time';
 
 const props = defineProps<{ sessao: SessionCard | null; dia: string }>();
 const emit = defineEmits<{

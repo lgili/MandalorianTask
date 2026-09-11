@@ -14,13 +14,13 @@
 // primeira abertura. Aqui, vault novo = modo restrito, sempre.
 
 import { ref } from 'vue';
-import type { DefinicaoPlugin, Manifesto } from './tipos';
+import type { DefinicaoPlugin, Manifesto } from './types';
 import { criaApi } from './api';
-import { validaManifesto } from './validacao';
+import { validaManifesto } from './validation';
 import * as api from '../db';
 import * as vault from '../vault';
-import { vaultAberto } from '../notas';
-import { NUCLEO } from './nucleo';
+import { vaultAberto } from '../notes';
+import { NUCLEO } from './core';
 
 export interface EstadoPlugin {
   manifesto: Manifesto;
@@ -200,7 +200,7 @@ export async function recarregaComunidade(): Promise<void> {
 
 /** Copia o plugin de exemplo para dentro do vault — o jeito rápido de ver um funcionando. */
 export async function instalaExemplo(): Promise<string> {
-  const { EXEMPLO } = await import('./exemplo');
+  const { EXEMPLO } = await import('./example');
   for (const [nome, conteudo] of Object.entries(EXEMPLO.arquivos)) {
     await vault.escreveArquivoInterno(`.bancada/plugins/${EXEMPLO.id}/${nome}`, conteudo);
   }

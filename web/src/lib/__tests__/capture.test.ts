@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analisa, analisaPrazo, achaProjeto } from '../captura';
+import { analisa, analisaPrazo, achaProjeto } from '../capture';
 import type { Project } from '../types';
 
 const proj = (id: number, name: string, code: string | null): Project => ({

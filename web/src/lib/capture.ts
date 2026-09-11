@@ -13,8 +13,8 @@
 // uma mensagem de erro durante uma reunião é pior que perder o metadado.
 
 import type { Project, TaskKind } from './types';
-import { ranqueia } from './projetos';
-import { dayKey, parseDayKey } from './tempo';
+import { ranqueia } from './projects';
+import { dayKey, parseDayKey } from './time';
 
 export interface Analise {
   titulo: string;

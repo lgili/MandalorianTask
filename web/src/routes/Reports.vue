@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import GraficoBarras from '../components/GraficoBarras.vue';
+import GraficoBarras from '../components/BarChart.vue';
 import * as api from '../lib/db';
 import type { Fluxo, LinhaDia, LinhaProjeto } from '../lib/db';
 import { toast } from '../lib/toast';
-import { addDays, dayKey, dayRangeUtc, fmtHM, inicioSemana, rotuloDia } from '../lib/tempo';
+import { addDays, dayKey, dayRangeUtc, fmtHM, inicioSemana, rotuloDia } from '../lib/time';
 
 const semana = ref(inicioSemana(dayKey()));
 const porDia = ref<LinhaDia[]>([]);

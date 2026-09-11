@@ -2,16 +2,16 @@
 import { computed, ref, watch } from 'vue';
 import { onKeyStroke } from '@vueuse/core';
 import { X, Play, Pause, Check, Trash2, Clock } from 'lucide-vue-next';
-import ChipProjeto from './ChipProjeto.vue';
-import SeletorProjeto from './SeletorProjeto.vue';
+import ChipProjeto from './ProjectChip.vue';
+import SeletorProjeto from './ProjectPicker.vue';
 import type { Outcome, Session, TaskCard, Transition } from '../lib/types';
 import { KINDS, OUTCOMES } from '../lib/types';
 import * as api from '../lib/db';
 import { abreDetalhe, carregaQuadro, conclui, detalheId, move, pausa, rodando, tarefas } from '../lib/store';
 import { toast } from '../lib/toast';
-import { modaisAbertos } from '../lib/teclado';
-import { duracaoMin, fmtDur, fmtHM, hhmm, relativo } from '../lib/tempo';
-import { agora, decorrido } from '../lib/relogio';
+import { modaisAbertos } from '../lib/keyboard';
+import { duracaoMin, fmtDur, fmtHM, hhmm, relativo } from '../lib/time';
+import { agora, decorrido } from '../lib/clock';
 
 const tarefa = computed<TaskCard | null>(() => tarefas.value.find((t) => t.id === detalheId.value) ?? null);
 const sessoes = ref<Session[]>([]);

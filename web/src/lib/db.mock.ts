@@ -10,7 +10,7 @@ import type {
   NotaIndice, NotaResumo, Outcome, Project, ResultadoBusca, Session, SessionCard, Task, TaskCard,
   TaskKind, TaskStatus, Totais, Transition,
 } from './types';
-import { dayRangeUtc, type DayKey } from './tempo';
+import { dayRangeUtc, type DayKey } from './time';
 
 export interface LinhaProjeto {
   project_id: number | null; project_name: string | null; project_code: string | null;

@@ -5,7 +5,7 @@
 import { computed, ref } from 'vue';
 import { AlertTriangle, RefreshCw, Download } from 'lucide-vue-next';
 import { alterna, defineRestrito, instalaExemplo, plugins, recarregaComunidade, restrito } from '../lib/plugins';
-import { vaultAberto } from '../lib/notas';
+import { vaultAberto } from '../lib/notes';
 import { toast } from '../lib/toast';
 
 const nucleo = computed(() => plugins.value.filter((p) => p.origem === 'nucleo'));

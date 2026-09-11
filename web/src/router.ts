@@ -15,29 +15,29 @@ const routes: RouteRecordRaw[] = [
     meta: { titulo: 'Início', tecla: '1', icone: 'home' } },
   // Projetos vem logo depois do Início: é o agrupador de tudo o mais, e ficar
   // enterrado em Ajustes era o motivo de o app parecer não ter projetos.
-  { path: '/projetos', name: 'projetos', component: () => import('./routes/Projetos.vue'),
+  { path: '/projetos', name: 'projetos', component: () => import('./routes/Projects.vue'),
     meta: { titulo: 'Projetos', tecla: '2', icone: 'folder' } },
-  { path: '/projeto/:id', name: 'projeto', component: () => import('./routes/Projeto.vue'),
+  { path: '/projeto/:id', name: 'projeto', component: () => import('./routes/Project.vue'),
     meta: { titulo: 'Projeto', tecla: '', icone: 'folder' } },
   // Notas logo depois de Projetos: são as duas metades do app — o que se faz
   // e o que se sabe. A nota aberta vai na query (?n=pasta/nota.md): caminho
   // com barra e acento como parâmetro de rota é briga com o encoder do router.
-  { path: '/notas', name: 'notas', component: () => import('./routes/Notas.vue'),
+  { path: '/notas', name: 'notas', component: () => import('./routes/Notes.vue'),
     meta: { titulo: 'Notas', tecla: '3', icone: 'notebook' } },
-  { path: '/backlog', name: 'backlog', component: () => import('./routes/Backlog.vue'),
+  { path: '/backlog', name: 'backlog', component: () => import('./routes/Capture.vue'),
     meta: { titulo: 'Captura', tecla: '4', icone: 'inbox' } },
-  { path: '/quadro', name: 'quadro', component: () => import('./routes/Quadro.vue'),
+  { path: '/quadro', name: 'quadro', component: () => import('./routes/Board.vue'),
     meta: { titulo: 'Quadro', tecla: '5', icone: 'columns' } },
-  { path: '/hoje', name: 'hoje', component: () => import('./routes/Hoje.vue'),
+  { path: '/hoje', name: 'hoje', component: () => import('./routes/Today.vue'),
     meta: { titulo: 'Hoje', tecla: '6', icone: 'clock' } },
-  { path: '/relatorios', name: 'relatorios', component: () => import('./routes/Relatorios.vue'),
+  { path: '/relatorios', name: 'relatorios', component: () => import('./routes/Reports.vue'),
     meta: { titulo: 'Relatórios', tecla: '7', icone: 'chart' } },
   // Painel registrado por plugin (ex.: o Grafo). O plugin monta o conteúdo.
   { path: '/plugin/:plugin/:painel', name: 'plugin', component: () => import('./routes/Plugin.vue'),
     meta: { titulo: 'Plugin', tecla: '', icone: 'puzzle' } },
   // Ajustes sai da navegação numerada e vive no rodapé da sidebar: é
   // configuração, não um destino de trabalho.
-  { path: '/ajustes', name: 'ajustes', component: () => import('./routes/Ajustes.vue'),
+  { path: '/ajustes', name: 'ajustes', component: () => import('./routes/Settings.vue'),
     meta: { titulo: 'Ajustes', tecla: '', icone: 'settings' } },
 ];
 

@@ -4,7 +4,7 @@
 // quadro MEDIU hoje entra na nota sozinho. Escrito só com a API pública —
 // nada de import de dentro do app. É a prova de que a API basta.
 
-import type { Bancada, DefinicaoPlugin, Manifesto, ProjetoInfo, SessaoInfo } from '../tipos';
+import type { Bancada, DefinicaoPlugin, Manifesto, ProjetoInfo, SessaoInfo } from '../types';
 
 export const manifesto: Manifesto = {
   id: 'nota-do-dia',

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { compativel, validaManifesto } from '../plugins/validacao';
-import { caixasAbertas } from '../plugins/nucleo/tarefasDaNota';
-import { blocoDoTrabalho } from '../plugins/nucleo/notaDoDia';
+import { compativel, validaManifesto } from '../plugins/validation';
+import { caixasAbertas } from '../plugins/core/noteTasks';
+import { blocoDoTrabalho } from '../plugins/core/dailyNote';
 
 describe('compatibilidade de versão da API', () => {
   it('sem exigência, qualquer plugin serve', () => {

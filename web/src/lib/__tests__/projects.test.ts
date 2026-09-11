@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codigoAuto, corPrevista, pontua, podeCriar, ranqueia } from '../projetos';
+import { codigoAuto, corPrevista, pontua, podeCriar, ranqueia } from '../projects';
 import type { Project } from '../types';
 
 const P = (id: number, name: string, code: string | null = null): Project =>

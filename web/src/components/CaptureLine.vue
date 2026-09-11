@@ -10,14 +10,14 @@
 // GRAVA. Um Enter servindo para duas coisas é o bug clássico desta tela.
 import { computed, nextTick, ref, watch } from 'vue';
 import { CornerDownLeft, X } from 'lucide-vue-next';
-import ChipProjeto from './ChipProjeto.vue';
-import ListaProjetos from './ListaProjetos.vue';
+import ChipProjeto from './ProjectChip.vue';
+import ListaProjetos from './ProjectList.vue';
 import type { Project, TaskStatus } from '../lib/types';
-import { analisa } from '../lib/captura';
+import { analisa } from '../lib/capture';
 import * as api from '../lib/db';
 import { criaProjeto, projetoDe, projetos, recarregaTudo } from '../lib/store';
 import { toast } from '../lib/toast';
-import { emite } from '../lib/eventos';
+import { emite } from '../lib/events';
 
 const props = withDefaults(defineProps<{
   /** Estar na tela do projeto JÁ é a atribuição — não se digita `#` ali. */

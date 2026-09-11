@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { fmtHM } from '../lib/tempo';
+import { fmtHM } from '../lib/time';
 
 /** Barra empilhada por dia. SVG à mão: ~40 linhas contra 250 KB de biblioteca. */
 const props = defineProps<{

@@ -2,10 +2,10 @@
 import { computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import Card from '../components/Card.vue';
-import CapturaLinha from '../components/CapturaLinha.vue';
+import CapturaLinha from '../components/CaptureLine.vue';
 import type { TaskCard, TaskStatus } from '../lib/types';
 import { arrastando, carregaProjetos, carregaQuadro, conclui, move, pausa, rodando, tarefas } from '../lib/store';
-import { fmtHM } from '../lib/tempo';
+import { fmtHM } from '../lib/time';
 import { ref } from 'vue';
 
 // O Backlog é uma tela própria, então o quadro tem três colunas largas em vez

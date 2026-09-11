@@ -3,7 +3,7 @@ import {
   dayKey, parseDayKey, addDays, dayRangeUtc, minutosDoDia, hhmm, utcDe,
   duracaoMin, arredonda, fmtHM, fmtDur, sobrepoe, minutosSobrepostos,
   lacunas, inicioSemana,
-} from '../tempo';
+} from '../time';
 
 // Estes testes existem porque é AQUI que o app pode mentir sobre horas
 // sem que nada quebre visivelmente.

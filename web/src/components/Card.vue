@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Clock, Repeat, Play, Pause, Check } from 'lucide-vue-next';
-import ChipProjeto from './ChipProjeto.vue';
+import ChipProjeto from './ProjectChip.vue';
 import type { TaskCard } from '../lib/types';
-import { fmtHM } from '../lib/tempo';
-import { agora, decorrido, minutosDecorridos } from '../lib/relogio';
+import { fmtHM } from '../lib/time';
+import { agora, decorrido, minutosDecorridos } from '../lib/clock';
 import { abreDetalhe } from '../lib/store';
 
 const props = defineProps<{ card: TaskCard; rodandoDesde?: string | null }>();

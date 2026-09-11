@@ -9,14 +9,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router';
 import { useDebounceFn } from '@vueuse/core';
 import { FileText, FolderKanban, CheckSquare, Terminal, Search } from 'lucide-vue-next';
-import ChipProjeto from './ChipProjeto.vue';
+import ChipProjeto from './ProjectChip.vue';
 import type { ResultadoBusca } from '../lib/types';
 import * as api from '../lib/db';
 import { abreDetalhe, paleta, projetos, tarefas } from '../lib/store';
-import { notas } from '../lib/notas';
-import { ranqueia } from '../lib/projetos';
-import { comandos, executaComando } from '../lib/comandos';
-import { modaisAbertos } from '../lib/teclado';
+import { notas } from '../lib/notes';
+import { ranqueia } from '../lib/projects';
+import { comandos, executaComando } from '../lib/commands';
+import { modaisAbertos } from '../lib/keyboard';
 import { toast } from '../lib/toast';
 
 const router = useRouter();

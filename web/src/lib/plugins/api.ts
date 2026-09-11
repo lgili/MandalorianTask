@@ -12,17 +12,17 @@ import * as cmLanguage from '@codemirror/language';
 import type { NotaResumo, Project, SessionCard, TaskCard } from '../types';
 import type {
   Bancada, Ligacao, Manifesto, NotaInfo, PainelPlugin, ProjetoInfo, SessaoInfo, TarefaInfo,
-} from './tipos';
-import { VERSAO_API } from './tipos';
+} from './types';
+import { VERSAO_API } from './types';
 import * as api from '../db';
 import * as vault from '../vault';
 import { router } from '../../router';
 import { abreDetalhe, move, projetos, recarregaTudo, rodando, tarefas } from '../store';
-import { criaNota, notaAberta, notas, resolve, salvaNota } from '../notas';
-import { executaComando, registraComando } from '../comandos';
-import { emite, escuta, type NomeEvento } from '../eventos';
-import { registraExtensao } from '../editor/extensoes';
-import { dayKey } from '../tempo';
+import { criaNota, notaAberta, notas, resolve, salvaNota } from '../notes';
+import { executaComando, registraComando } from '../commands';
+import { emite, escuta, type NomeEvento } from '../events';
+import { registraExtensao } from '../editor/extensions';
+import { dayKey } from '../time';
 import { toast } from '../toast';
 
 /** Painéis registrados por plugins — a barra lateral e a rota /plugin leem isto. */

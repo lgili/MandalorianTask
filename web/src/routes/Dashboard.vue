@@ -5,9 +5,9 @@ import type { Outcome, TaskCard } from '../lib/types';
 import { OUTCOMES } from '../lib/types';
 import * as api from '../lib/db';
 import { abreDetalhe, carregaDia, carregaQuadro, rodando, sessoesDia, tarefas, totaisDia } from '../lib/store';
-import ChipProjeto from '../components/ChipProjeto.vue';
-import { addDays, dayKey, dayRangeUtc, diasEntre, fmtHM, inicioSemana, rotuloDiaLongo } from '../lib/tempo';
-import { agora, decorrido } from '../lib/relogio';
+import ChipProjeto from '../components/ProjectChip.vue';
+import { addDays, dayKey, dayRangeUtc, diasEntre, fmtHM, inicioSemana, rotuloDiaLongo } from '../lib/time';
+import { agora, decorrido } from '../lib/clock';
 
 const router = useRouter();
 const desf = ref<Array<{ outcome: Outcome | null; n: number }>>([]);

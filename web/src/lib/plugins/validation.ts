@@ -3,8 +3,8 @@
 // É a primeira linha contra plugin malformado: um id com '..' ou '/' viraria
 // caminho fora da pasta do plugin quando o app monta `.bancada/plugins/<id>/`.
 
-import type { Manifesto } from './tipos';
-import { VERSAO_API } from './tipos';
+import type { Manifesto } from './types';
+import { VERSAO_API } from './types';
 
 export const ID_VALIDO = /^[a-z0-9][a-z0-9-]{1,48}$/;
 

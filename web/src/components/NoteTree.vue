@@ -3,7 +3,7 @@
 // índice é uma query; ler o disco seriam centenas de chamadas.
 import { computed, ref } from 'vue';
 import { ChevronRight, FileText } from 'lucide-vue-next';
-import ChipProjeto from './ChipProjeto.vue';
+import ChipProjeto from './ProjectChip.vue';
 import type { NotaResumo } from '../lib/types';
 import { nomeArquivo } from '../lib/markdown';
 

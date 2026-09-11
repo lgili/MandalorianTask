@@ -4,10 +4,10 @@
 import { computed, ref } from 'vue';
 import type { Outcome, Project, SessionCard, TaskCard, TaskStatus, Totais } from './types';
 import * as api from './db';
-import { codigoAuto } from './projetos';
-import { dayKey, type DayKey } from './tempo';
+import { codigoAuto } from './projects';
+import { dayKey, type DayKey } from './time';
 import { toast } from './toast';
-import { emite } from './eventos';
+import { emite } from './events';
 
 /**
  * Projetos vivos, já com contagem e horas. É `ProjetoResumo`, que estende

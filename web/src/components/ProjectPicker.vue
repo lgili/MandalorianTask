@@ -4,11 +4,11 @@
 import { computed, nextTick, ref } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 import { ChevronDown } from 'lucide-vue-next';
-import ChipProjeto from './ChipProjeto.vue';
-import ListaProjetos from './ListaProjetos.vue';
+import ChipProjeto from './ProjectChip.vue';
+import ListaProjetos from './ProjectList.vue';
 import type { Project } from '../lib/types';
 import { criaProjeto, projetoDe } from '../lib/store';
-import { modaisAbertos } from '../lib/teclado';
+import { modaisAbertos } from '../lib/keyboard';
 
 const props = defineProps<{ modelValue: number | null }>();
 const emit = defineEmits<{ 'update:modelValue': [number | null] }>();

@@ -4,7 +4,7 @@
 // tarefas no Bancada, já no projeto da nota. É a ponte entre as duas metades
 // do app: o que se ANOTA vira o que se FAZ, sem redigitar.
 
-import type { Bancada, DefinicaoPlugin, Manifesto } from '../tipos';
+import type { Bancada, DefinicaoPlugin, Manifesto } from '../types';
 
 export const manifesto: Manifesto = {
   id: 'tarefas-da-nota',

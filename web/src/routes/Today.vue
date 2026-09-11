@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { ChevronLeft, ChevronRight, Pencil } from 'lucide-vue-next';
-import EditorSessao from '../components/EditorSessao.vue';
+import EditorSessao from '../components/SessionEditor.vue';
 import type { SessionCard } from '../lib/types';
 import * as api from '../lib/db';
 import { carregaDia, diaAtual, sessoesDia, totaisDia } from '../lib/store';
 import { toast } from '../lib/toast';
-import { addDays, dayKey, duracaoMin, fmtDur, fmtHM, hhmm, rotuloDia } from '../lib/tempo';
-import { agora, decorrido } from '../lib/relogio';
+import { addDays, dayKey, duracaoMin, fmtDur, fmtHM, hhmm, rotuloDia } from '../lib/time';
+import { agora, decorrido } from '../lib/clock';
 
 const editando = ref<SessionCard | null>(null);
 const ehHoje = computed(() => diaAtual.value === dayKey());

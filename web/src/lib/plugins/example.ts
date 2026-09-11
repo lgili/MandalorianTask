@@ -3,9 +3,9 @@
 // Os arquivos vêm de exemplos/plugins/ na raiz do repositório via `?raw` —
 // a MESMA cópia que um autor de plugin lê. Nada de uma segunda versão aqui
 // dentro que um dia divergiria da documentada.
-import manifesto from '../../../../exemplos/plugins/destaca-todo/manifest.json?raw';
-import main from '../../../../exemplos/plugins/destaca-todo/main.js?raw';
-import estilos from '../../../../exemplos/plugins/destaca-todo/styles.css?raw';
+import manifesto from '../../../../examples/plugins/highlight-todo/manifest.json?raw';
+import main from '../../../../examples/plugins/highlight-todo/main.js?raw';
+import estilos from '../../../../examples/plugins/highlight-todo/styles.css?raw';
 
 export const EXEMPLO = {
   id: 'destaca-todo',

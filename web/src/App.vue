@@ -6,23 +6,23 @@ import { Square, AlertTriangle, Plus, Settings, Puzzle } from 'lucide-vue-next';
 import ToastHost from './components/ToastHost.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import QuickAdd from './components/QuickAdd.vue';
-import Paleta from './components/Paleta.vue';
-import ChipProjeto from './components/ChipProjeto.vue';
+import Paleta from './components/Palette.vue';
+import ChipProjeto from './components/ProjectChip.vue';
 import {
   abreDetalhe, abreQuickAdd, arrastando, carregaProjetos, carregaQuadro, carregaDia,
   criaProjeto, paleta, projetos, quickAdd, rodando, pausa, soltaEmProjeto, tarefas, sessoesDia,
 } from './lib/store';
-import { corPrevista } from './lib/projetos';
-import { abreVault, criaNota, escolheVault, notas, sincroniza, vaultAberto } from './lib/notas';
-import { registraComando } from './lib/comandos';
+import { corPrevista } from './lib/projects';
+import { abreVault, criaNota, escolheVault, notas, sincroniza, vaultAberto } from './lib/notes';
+import { registraComando } from './lib/commands';
 import { iniciaPlugins } from './lib/plugins';
 import { paineis } from './lib/plugins/api';
 import { alternaTema } from './lib/theme';
 import * as api from './lib/db';
 import { toast } from './lib/toast';
-import { agora, decorrido } from './lib/relogio';
-import { ehAtalhoDeFuga, podeAtalho } from './lib/teclado';
-import { addDays, dayKey } from './lib/tempo';
+import { agora, decorrido } from './lib/clock';
+import { ehAtalhoDeFuga, podeAtalho } from './lib/keyboard';
+import { addDays, dayKey } from './lib/time';
 
 const route = useRoute();
 const router = useRouter();

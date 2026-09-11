@@ -6,10 +6,10 @@
 // digitando algo, perder o texto também.
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onKeyStroke } from '@vueuse/core';
-import CapturaLinha from './CapturaLinha.vue';
-import ChipProjeto from './ChipProjeto.vue';
+import CapturaLinha from './CaptureLine.vue';
+import ChipProjeto from './ProjectChip.vue';
 import { fechaQuickAdd, projetoDe, quickAdd } from '../lib/store';
-import { modaisAbertos } from '../lib/teclado';
+import { modaisAbertos } from '../lib/keyboard';
 import { toast } from '../lib/toast';
 
 const captura = ref<InstanceType<typeof CapturaLinha> | null>(null);

@@ -13,9 +13,9 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { WikiLink } from '../lib/editor/wikilink';
 import { livePreview, redesenha, tags } from '../lib/editor/livePreview';
-import { destaque, temaEditor } from '../lib/editor/tema';
-import { completaLinks, type OpcaoLink } from '../lib/editor/autocompleta';
-import { extensoesDePlugin } from '../lib/editor/extensoes';
+import { destaque, temaEditor } from '../lib/editor/theme';
+import { completaLinks, type OpcaoLink } from '../lib/editor/autocomplete';
+import { extensoesDePlugin } from '../lib/editor/extensions';
 
 const props = withDefaults(defineProps<{
   modelValue: string;

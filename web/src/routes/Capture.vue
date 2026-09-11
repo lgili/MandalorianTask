@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { Trash2, ArrowRight } from 'lucide-vue-next';
-import CapturaLinha from '../components/CapturaLinha.vue';
-import ChipProjeto from '../components/ChipProjeto.vue';
+import CapturaLinha from '../components/CaptureLine.vue';
+import ChipProjeto from '../components/ProjectChip.vue';
 import type { TaskCard } from '../lib/types';
 import * as api from '../lib/db';
 import { abreDetalhe, backlog, carregaQuadro, tarefas } from '../lib/store';
 import { toast } from '../lib/toast';
-import { dayKey, rotuloDia } from '../lib/tempo';
+import { dayKey, rotuloDia } from '../lib/time';
 
 const captura = ref<InstanceType<typeof CapturaLinha> | null>(null);
 /** Ids mandados para a fila nesta sessão de tela: continuam visíveis, carimbados. */

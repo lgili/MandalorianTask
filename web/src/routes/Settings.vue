@@ -7,10 +7,10 @@ import { useRouter } from 'vue-router';
 import { ref } from 'vue';
 import { ArrowRight, FolderOpen, RefreshCw } from 'lucide-vue-next';
 import { projetos } from '../lib/store';
-import { escolheVault, notas, sincroniza, sincronizando, vaultAberto } from '../lib/notas';
+import { escolheVault, notas, sincroniza, sincronizando, vaultAberto } from '../lib/notes';
 import { toast } from '../lib/toast';
-import AjustesPlugins from '../components/AjustesPlugins.vue';
-import { GRAO_MIN, tzAtual } from '../lib/tempo';
+import AjustesPlugins from '../components/PluginSettings.vue';
+import { GRAO_MIN, tzAtual } from '../lib/time';
 import { TEMAS, aplicaTema, temaAtual } from '../lib/theme';
 
 const router = useRouter();

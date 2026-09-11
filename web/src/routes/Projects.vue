@@ -5,11 +5,11 @@
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Plus, Archive, Inbox } from 'lucide-vue-next';
-import ChipProjeto from '../components/ChipProjeto.vue';
+import ChipProjeto from '../components/ProjectChip.vue';
 import * as api from '../lib/db';
 import { carregaProjetos, criaProjeto, projetos, tarefas } from '../lib/store';
 import { toast } from '../lib/toast';
-import { fmtHM, relativo } from '../lib/tempo';
+import { fmtHM, relativo } from '../lib/time';
 
 const router = useRouter();
 const criando = ref(false);
