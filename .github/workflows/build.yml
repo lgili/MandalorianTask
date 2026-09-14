@@ -1,55 +1,120 @@
-name: build
+name: Installers
 
+# Every push to main and every pull request builds the Windows installer and
+# keeps it as a downloadable artifact (Actions → run → Artifacts), so a build
+# can be tried without cutting a release. A `v*` tag does the same AND attaches
+# the installer to a draft GitHub Release, then adds the macOS .app/.dmg to it.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  web:
+    name: Web — typecheck and tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # No `version:` — the action reads "packageManager" from package.json, so
+      # the two can never drift apart.
       - uses: pnpm/action-setup@v4
-        with: { version: 9.15.0 }   # casar exato com packageManager da raiz
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir web typecheck
       - run: pnpm --dir web test
 
-  build:
-    needs: check
-    # Repo novo em conta pessoal nasce com GITHUB_TOKEN somente-leitura; sem isto
-    # o tauri-action leva 403 ao criar o release DEPOIS de compilar os dois alvos.
+  windows:
+    name: Windows — Rust tests and NSIS installer
+    needs: web
+    runs-on: windows-latest
+    # Only used on tags, to create the draft release. A new repository starts
+    # with a read-only GITHUB_TOKEN, and tauri-action would get a 403 after
+    # compiling for several minutes.
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Windows primeiro: é a máquina de trabalho.
-          - os: windows-latest
-            args: "--bundles nsis"
-          - os: macos-latest
-            args: "--bundles app,dmg"
-    runs-on: ${{ matrix.os }}
+    env:
+      IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9.15.0 }   # casar exato com packageManager da raiz
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 22, cache: pnpm }
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with: { workspaces: "src-tauri -> target" }
       - run: pnpm install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v0
+
+      # tauri.conf.json takes the app version from package.json. A tag that
+      # disagrees would publish "v0.2.0" containing Bancada_0.1.0_x64-setup.exe.
+      - name: Tag matches the app version
+        if: env.IS_RELEASE == 'true'
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            Write-Error "Tag ${{ github.ref_name }} does not match package.json version $version."
+            exit 1
+          }
+
+      # Includes the migration tests: every applied migration's checksum is
+      # frozen, and v4 is run against real data through the real sqlx migrator.
+      # An installer that would refuse to open an existing database never gets
+      # built.
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      # Without tagName/releaseName the action only builds; with them (tags
+      # only) it also creates the draft release and uploads the installer.
+      - name: Build installer
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: .
-          tagName: ${{ github.ref_name }}
-          releaseName: "Bancada ${{ github.ref_name }}"
+          args: --bundles nsis
+          tagName: ${{ env.IS_RELEASE == 'true' && github.ref_name || '' }}
+          releaseName: ${{ env.IS_RELEASE == 'true' && format('Bancada {0}', github.ref_name) || '' }}
           releaseDraft: true
-          args: ${{ matrix.args }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bancada-windows-installer
+          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: macOS — app and dmg (release tags only)
+    # After windows, not beside it: that job already checked the tag against
+    # the version, and two jobs creating the same draft release at once can
+    # end up with two drafts.
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: "src-tauri -> target" }
+      - run: pnpm install --frozen-lockfile
+      - name: Build app and attach to the draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --bundles app,dmg
+          tagName: ${{ github.ref_name }}
+          releaseName: Bancada ${{ github.ref_name }}
+          releaseDraft: true

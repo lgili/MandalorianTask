@@ -52,8 +52,23 @@ pnpm tauri icon app-icon.png   # once, generates src-tauri/icons/
 pnpm build                     # macOS: .app + .dmg   |   Windows: -setup.exe (NSIS)
 ```
 
-CI: a `v*` tag triggers `.github/workflows/build.yml`, which builds macOS and Windows and attaches
-the installers to the Release.
+### CI
+
+`.github/workflows/build.yml` builds the **Windows installer** (NSIS `-setup.exe`) on every push to
+`main` and every pull request, after the web typecheck/tests and the Rust tests pass. The installer is
+kept as a run artifact for 14 days (Actions → the run → *Artifacts*).
+
+To publish a version: bump `version` in `package.json`, then push a matching tag
+(`git tag v0.2.0 && git push origin v0.2.0`). The same workflow attaches the Windows installer to a
+**draft** GitHub Release, then builds the macOS `.app`/`.dmg` (tags only) and attaches them too —
+review the draft and publish. A tag that doesn't match `package.json` fails the run.
+
+The installer is not code-signed yet, so Windows SmartScreen shows "Windows protected your PC" on first
+run (*More info → Run anyway*). Signing needs a certificate and is a separate step.
+
+The Rust tests include `applied_migrations_are_frozen`: every shipped migration's SQL checksum is pinned,
+because sqlx refuses to open a database whose applied migration changed. Never edit an old migration —
+append a new one and add its checksum.
 
 ## Notes
 
