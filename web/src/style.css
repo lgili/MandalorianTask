@@ -7,18 +7,18 @@
 @tailwind utilities;
 
 /* ════════════════════════════════════════════════════════════════════════
-   TEMAS — papéis compartilhados:
-     surface-1 chão · surface-2 sidebar/faixas · surface card · surface-3 hover
-     accent    ação primária E a sessão que roda (cor saturada = agora)
-     p1..p6    cor por projeto · trabalho/reuniao/admin tipos
+   THEMES — shared roles:
+     surface-1 floor · surface-2 sidebar/lanes · surface card · surface-3 hover
+     accent    primary action AND the running session (saturated color = now)
+     p1..p6    color per project · work/meeting/admin types
 
-   Regra de cor: `--x` PREENCHE, `--x-ink` ESCREVE. No escuro o -ink é mais
-   claro que o -x; no claro, mais escuro. Uma cor que rende 8:1 sobre
-   quase-preto rende 3:1 sobre branco — é geometria, não gosto, e foi por
-   isso que o tema Claro nasceu decorativo.
+   Color rule: `--x` FILLS, `--x-ink` WRITES. On dark the -ink is lighter
+   than the -x; on light, darker. A color that gives 8:1 on near-black
+   gives 3:1 on white — that is geometry, not taste, and it is why the
+   Light theme was born decorative.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* ── LEDGER (padrão): quase-preto, teal, serif editorial. ──────────────── */
+/* ── LEDGER (default): near-black, teal, editorial serif. ──────────────── */
 :root, [data-theme="ledger"] {
   color-scheme: dark;
   --surface-1: 11 14 15;
@@ -28,21 +28,21 @@
 
   --fg:        232 230 225;
   --fg-muted:  154 161 166;
-  --fg-subtle: 122 131 137;   /* era 110 119 124 — 3,91:1 reprovava em AA */
+  --fg-subtle: 122 131 137;   /* was 110 119 124 — 3.91:1 failed AA */
 
-  /* Réguas a 1,13:1 eram invisíveis em brilho baixo, e é delas que a
-     estrutura das linhas de lista depende. Agora ~1,41:1. */
+  /* Rules at 1.13:1 were invisible at low brightness, and list rows depend
+     on them for their structure. Now ~1.41:1. */
   --rule:        44 52 55;
   --rule-strong: 58 68 72;
 
   --accent:      46 196 182;
   --accent-ink:  95 211 197;
-  --vivo:        46 196 182;
-  --vivo-ink:    95 211 197;
+  --live:        46 196 182;
+  --live-ink:    95 211 197;
 
-  --trabalho: 108 180 255;
-  --reuniao:  240 179 92;
-  --admin:    139 146 151;
+  --work:    108 180 255;
+  --meeting: 240 179 92;
+  --admin:   139 146 151;
 
   --p1: 85 214 160;  --p2: 240 179 92;  --p3: 108 180 255;
   --p4: 179 156 255; --p5: 242 139 130; --p6: 95 211 197;
@@ -53,30 +53,30 @@
   --glow: 46 196 182;
 }
 
-/* ── NOITE: escuro azulado, índigo. ────────────────────────────────────── */
-[data-theme="noite"] {
+/* ── NIGHT: bluish dark, indigo. ───────────────────────────────────────── */
+[data-theme="night"] {
   color-scheme: dark;
   --surface-1: 11 13 18; --surface-2: 17 20 27; --surface: 24 28 37; --surface-3: 34 39 52;
   --fg: 237 240 246; --fg-muted: 160 168 186; --fg-subtle: 128 137 158;
   --rule: 48 55 72; --rule-strong: 64 72 94;
-  /* accent escureceu: com 124,124,247 o texto branco do botão primário dava
-     3,45:1 — o botão principal do app reprovava. */
-  --accent: 98 98 226; --accent-ink: 164 164 255; --vivo: 74 222 128; --vivo-ink: 134 239 172;
-  --trabalho: 108 141 255; --reuniao: 242 126 198; --admin: 139 147 167;
+  /* accent got darker: with 124,124,247 the primary button's white text gave
+     3.45:1 — the app's main button failed. */
+  --accent: 98 98 226; --accent-ink: 164 164 255; --live: 74 222 128; --live-ink: 134 239 172;
+  --work: 108 141 255; --meeting: 242 126 198; --admin: 139 147 167;
   --p1: 90 169 255; --p2: 242 126 198; --p3: 69 209 154; --p4: 255 180 84; --p5: 182 156 255; --p6: 255 138 107;
   --ok: 74 222 128; --warn: 250 204 21; --danger: 248 113 113;
   --on-accent: 255 255 255; --shadow: 0 0 0; --glow: 98 98 226;
 }
 
-/* ── CLARO: light frio. Refeito com a conta na mão — quase toda cor do
-   tema antigo reprovava em AA sobre branco, inclusive o botão primário. ── */
-[data-theme="claro"] {
+/* ── LIGHT: cool light. Redone with the math in hand — almost every color of
+   the old theme failed AA on white, the primary button included. ── */
+[data-theme="light"] {
   color-scheme: light;
   --surface-1: 243 244 246; --surface-2: 236 238 241; --surface: 255 255 255; --surface-3: 226 229 234;
   --fg: 20 22 26; --fg-muted: 91 98 108; --fg-subtle: 108 116 128;
   --rule: 212 217 224; --rule-strong: 192 199 208;
-  --accent: 13 110 102; --accent-ink: 12 94 87; --vivo: 13 110 102; --vivo-ink: 12 94 87;
-  --trabalho: 29 78 216; --reuniao: 180 83 9; --admin: 100 108 120;
+  --accent: 13 110 102; --accent-ink: 12 94 87; --live: 13 110 102; --live-ink: 12 94 87;
+  --work: 29 78 216; --meeting: 180 83 9; --admin: 100 108 120;
   --p1: 4 120 87; --p2: 180 83 9; --p3: 29 78 216; --p4: 109 40 217; --p5: 190 30 30; --p6: 13 110 102;
   --ok: 4 120 87; --warn: 161 98 7; --danger: 197 27 27;
   --on-accent: 255 255 255; --shadow: 30 34 40; --glow: 13 110 102;
@@ -84,34 +84,34 @@
 
 @layer base {
   /*
-   * ESCALA TIPOGRÁFICA — 8 degraus, nenhum salto abaixo de 1,14×.
+   * TYPE SCALE — 8 steps, no jump below 1.14×.
    *
-   * Existiam 22 tamanhos, doze deles espremidos entre 9 e 15px. Passo de
-   * 0,5px está abaixo do limiar perceptivo E do limiar de renderização:
-   * 13px e 13.5px produzem o mesmo raster a 100%. Era complexidade paga por
-   * uma diferença que ninguém vê — e o mesmo dado (duração acumulada)
-   * aparecia em quatro tamanhos diferentes em quatro telas.
+   * There were 22 sizes, twelve of them squeezed between 9 and 15px. A
+   * 0.5px step is below the perceptual threshold AND the rendering threshold:
+   * 13px and 13.5px produce the same raster at 100%. It was complexity paid
+   * for a difference nobody sees — and the same data (accumulated duration)
+   * showed up in four different sizes on four screens.
    */
   :root {
-    --t-micro:  11px;   /* chips, carimbos, contadores mono */
-    --t-meta:   12px;   /* metadados, prazos, legendas, rótulos */
-    --t-corpo:  14px;   /* conteúdo: título de tarefa, linha de lista, input */
-    --t-lead:   16px;   /* frase-resumo, subtítulo de tela */
-    --t-secao:  20px;   /* título de painel */
-    --t-titulo: 24px;   /* título do drawer */
-    --t-num:    32px;   /* número grande de tile */
-    --t-tela:   44px;   /* h1 da tela */
+    --t-micro:   11px;   /* chips, stamps, mono counters */
+    --t-meta:    12px;   /* metadata, due dates, captions, labels */
+    --t-body:    14px;   /* content: task title, list row, input */
+    --t-lead:    16px;   /* summary sentence, screen subtitle */
+    --t-section: 20px;   /* panel title */
+    --t-title:   24px;   /* drawer title */
+    --t-num:     32px;   /* big tile number */
+    --t-display: 44px;   /* screen h1 */
   }
 
   body {
     @apply bg-surface-1 text-fg font-sans antialiased;
-    font-size: var(--t-corpo);
+    font-size: var(--t-body);
     line-height: 20px;
     font-variant-numeric: tabular-nums;
   }
-  /* O offset fixo em surface-1 pintava 2px da cor do CHÃO ao redor de um
-     controle que vive dentro de um painel. Transparente acerta em toda
-     superfície. */
+  /* The fixed offset in surface-1 painted 2px of the FLOOR color around a
+     control that lives inside a panel. Transparent is right on every
+     surface. */
   :focus-visible { @apply rounded outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-transparent; }
   ::selection { @apply bg-accent/30; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -120,10 +120,10 @@
 }
 
 @layer components {
-  /* Serif editorial: NO MÁXIMO uma por tela, e só no título dela. Antes a
-     serif significava "qualquer coisa grande" — inclusive números de KPI, com
-     hairlines quebrando a 36px ao lado de um mono robusto. Fonte tem que
-     comunicar papel, não tamanho. */
+  /* Editorial serif: AT MOST one per screen, and only in its title. The serif
+     used to mean "anything big" — KPI numbers included, with hairlines
+     breaking at 36px next to a sturdy mono. A font has to communicate role,
+     not size. */
   .display { @apply font-serif font-normal tracking-[-0.01em]; }
 
   .btn {
@@ -134,37 +134,37 @@
   }
   .btn-accent { @apply border-transparent bg-accent text-on-accent font-semibold hover:bg-accent hover:text-on-accent hover:brightness-110; }
   .btn-ghost  { @apply border-transparent bg-transparent hover:bg-surface-3; }
-  /* Botão só-ícone: existia como `.btn !p-1.5` em cinco lugares. */
-  .btn-icone  { @apply !px-1.5 !py-1.5; }
-  /* Ação destrutiva: existia como `.btn !text-danger` em três. */
-  .btn-perigo { @apply text-danger hover:text-danger hover:bg-danger/10 hover:border-danger/40; }
+  /* Icon-only button: existed as `.btn !p-1.5` in five places. */
+  .btn-icon   { @apply !px-1.5 !py-1.5; }
+  /* Destructive action: existed as `.btn !text-danger` in three. */
+  .btn-danger { @apply text-danger hover:text-danger hover:bg-danger/10 hover:border-danger/40; }
 
   .inp {
     @apply w-full rounded-lg border border-rule-strong/80 bg-surface-2 px-3 py-2
-           text-[length:var(--t-corpo)] text-fg
+           text-[length:var(--t-body)] text-fg
            outline-none transition placeholder:text-fg-subtle focus:border-accent/70 focus:ring-2 focus:ring-accent/20;
   }
 
   /*
-   * Rótulo de seção e de campo.
+   * Section and field label.
    *
-   * Era mono + CAIXA ALTA + tracking .14em a 10,5px em fg-subtle: 3,91:1 no
-   * Ledger, 3,18:1 no Claro — abaixo do mínimo AA, em 31 lugares. Caixa alta
-   * com tracking também destrói o contorno da palavra, e a classe estava
-   * sendo usada em frases de quatro palavras ("Como o tempo é medido").
-   * Precisava de !important seis vezes para escapar de si mesma.
+   * It was mono + ALL CAPS + .14em tracking at 10.5px in fg-subtle: 3.91:1 on
+   * Ledger, 3.18:1 on Light — below the AA minimum, in 31 places. All caps
+   * with tracking also destroys the shape of the word, and the class was
+   * being used on four-word phrases ("How time is measured").
+   * It needed !important six times to escape itself.
    */
-  .rot   { @apply text-[length:var(--t-meta)] font-medium text-fg-muted; }
-  /* O tique mono-maiúsculo sobrevive num lugar só: a etiqueta da rota. */
-  .etiqueta { @apply font-mono text-[length:var(--t-micro)] font-medium uppercase tracking-[0.14em] text-fg-muted; }
+  .label { @apply text-[length:var(--t-meta)] font-medium text-fg-muted; }
+  /* The mono-uppercase tic survives in one place only: the route eyebrow. */
+  .eyebrow { @apply font-mono text-[length:var(--t-micro)] font-medium uppercase tracking-[0.14em] text-fg-muted; }
 
-  .med   { @apply font-mono tabular-nums; }
-  .painel{ @apply rounded-xl border border-rule bg-surface; }
-  .painel-cab { @apply flex items-center gap-3 border-b border-rule px-4 py-3; }
-  .painel-corpo { @apply p-4; }
-  .faixa { @apply rounded-xl border border-rule bg-surface-2/60; }
+  .mono  { @apply font-mono tabular-nums; }
+  .panel { @apply rounded-xl border border-rule bg-surface; }
+  .panel-header { @apply flex items-center gap-3 border-b border-rule px-4 py-3; }
+  .panel-body { @apply p-4; }
+  .lane  { @apply rounded-xl border border-rule bg-surface-2/60; }
   .chip  { @apply inline-flex items-center gap-1 rounded px-1.5 py-[3px] font-mono
                   text-[length:var(--t-micro)] font-medium leading-none; }
-  /* linha de lista (dashboard, backlog): hairline, hover discreto */
-  .linha { @apply grid items-center gap-3 border-b border-rule px-3 py-2.5 transition-colors hover:bg-surface-3/40 last:border-b-0; }
+  /* list row (dashboard, capture): hairline, subtle hover */
+  .row   { @apply grid items-center gap-3 border-b border-rule px-3 py-2.5 transition-colors hover:bg-surface-3/40 last:border-b-0; }
 }

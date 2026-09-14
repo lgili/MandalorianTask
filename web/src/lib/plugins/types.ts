@@ -1,208 +1,208 @@
-// O CONTRATO DE PLUGIN DO BANCADA.
+// THE BANCADA PLUGIN CONTRACT.
 //
-// Este arquivo é a API pública: é o que um autor de plugin lê, e é o que o
-// app promete não quebrar. Por isso ele não importa nada de dentro do app —
-// os tipos daqui são DTOs próprios (NotaInfo, TarefaInfo…), não os tipos
-// internos do banco. O app pode reorganizar o que quiser por dentro; enquanto
-// este arquivo não mudar, nenhum plugin quebra.
+// This file is the public API: it is what a plugin author reads, and what the
+// app promises not to break. That is why it imports nothing from inside the
+// app — the types here are their own DTOs (NoteInfo, TaskInfo…), not the
+// database's internal types. The app can reorganize whatever it wants inside;
+// as long as this file does not change, no plugin breaks.
 //
-// Autor de plugin: copie este arquivo como `bancada.d.ts` no seu projeto.
-// Documentação e exemplo: docs/PLUGINS.md.
+// Plugin author: copy this file as `bancada.d.ts` into your project.
+// Documentation and example: docs/PLUGINS.md.
 
-/** Versão do contrato. Muda o primeiro número = quebra plugin antigo. */
-export const VERSAO_API = '1.0.0';
+/** Contract version. Changing the first number = breaks old plugins. */
+export const API_VERSION = '1.0.0';
 
-export interface Manifesto {
-  /** Único, só letras minúsculas, números e hífen. É o nome da pasta. */
+export interface PluginManifest {
+  /** Unique; only lowercase letters, digits and hyphens. It is the folder name. */
   id: string;
-  nome: string;
-  versao: string;
-  descricao?: string;
-  autor?: string;
-  /** Versão mínima da API (VERSAO_API) que o plugin exige. */
-  apiMinima?: string;
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  /** Minimum API version (API_VERSION) the plugin requires. */
+  minApiVersion?: string;
 }
 
-// ── dados que o plugin enxerga ─────────────────────────────────────────────
+// ── data the plugin sees ───────────────────────────────────────────────────
 
-export interface NotaInfo {
-  /** Caminho relativo ao vault, sempre com '/'. Ex.: 'Técnico/Snubber RCD.md' */
+export interface NoteInfo {
+  /** Path relative to the vault, always with '/'. E.g.: 'Technical/RCD snubber.md' */
   path: string;
-  titulo: string;
-  /** ms desde a época. */
-  editadaEm: number;
-  /** id do projeto ligado pelo frontmatter `projeto:`, se houver. */
-  projeto: number | null;
+  title: string;
+  /** ms since the epoch. */
+  modifiedAt: number;
+  /** id of the project linked through the `project:` frontmatter, if any. */
+  project: number | null;
   tags: string[];
 }
 
-export type Status = 'backlog' | 'fila' | 'fazendo' | 'feito';
+export type Status = 'backlog' | 'queued' | 'doing' | 'done';
 
-export interface TarefaInfo {
+export interface TaskInfo {
   id: number;
-  titulo: string;
+  title: string;
   status: Status;
-  projeto: number | null;
-  /** Minutos medidos em sessões fechadas. */
-  minutos: number;
-  /** ISO, ou null. */
-  prazo: string | null;
-  criadaEm: string;
+  project: number | null;
+  /** Minutes measured in closed sessions. */
+  minutes: number;
+  /** ISO, or null. */
+  due: string | null;
+  createdAt: string;
 }
 
-export interface ProjetoInfo {
+export interface ProjectInfo {
   id: number;
-  nome: string;
-  codigo: string | null;
-  /** Token de cor: 'p1'..'p6'. Use `rgb(var(--p1))` no CSS. */
-  cor: string | null;
+  name: string;
+  code: string | null;
+  /** Color token: 'p1'..'p6'. Use `rgb(var(--p1))` in CSS. */
+  color: string | null;
 }
 
-export interface SessaoInfo {
-  tarefa: number;
-  titulo: string;
-  projeto: number | null;
-  inicio: string;
-  /** null = rodando agora. */
-  fim: string | null;
+export interface SessionInfo {
+  task: number;
+  title: string;
+  project: number | null;
+  start: string;
+  /** null = running right now. */
+  end: string | null;
 }
 
-export interface Ligacao {
-  /** Nota de onde sai o link. */
-  de: string;
-  /** Nota para onde aponta, ou null se o link aponta para nota que não existe. */
-  para: string | null;
-  /** O alvo como foi escrito (normalizado). */
-  alvo: string;
+export interface Link {
+  /** Note the link comes from. */
+  from: string;
+  /** Note it points to, or null if the link points to a note that does not exist. */
+  to: string | null;
+  /** The target as it was written (normalized). */
+  target: string;
 }
 
-// ── eventos ────────────────────────────────────────────────────────────────
+// ── events ─────────────────────────────────────────────────────────────────
 
-export interface EventosPlugin {
-  'nota:aberta': { path: string };
-  'nota:salva': { path: string; texto: string };
-  'nota:criada': { path: string };
-  'nota:apagada': { path: string };
-  'nota:renomeada': { de: string; para: string };
-  'nota:externa': { path: string };
-  'vault:sincronizado': { total: number };
-  'tarefa:criada': { id: number; titulo: string; projeto: number | null };
-  'tarefa:movida': { id: number; de: string | null; para: string };
-  /** Só o Bancada tem isto: o momento em que o trabalho começa e para. */
-  'sessao:iniciada': { tarefa: number; titulo: string };
-  'sessao:encerrada': { tarefa: number | null };
+export interface PluginEvents {
+  'note:opened': { path: string };
+  'note:saved': { path: string; text: string };
+  'note:created': { path: string };
+  'note:deleted': { path: string };
+  'note:renamed': { from: string; to: string };
+  'note:external': { path: string };
+  'vault:synced': { total: number };
+  'task:created': { id: number; title: string; project: number | null };
+  'task:moved': { id: number; from: string | null; to: string };
+  /** Only Bancada has this: the moment work starts and stops. */
+  'session:started': { task: number; title: string };
+  'session:stopped': { task: number | null };
 }
 
-// ── o que o plugin registra ────────────────────────────────────────────────
+// ── what the plugin registers ──────────────────────────────────────────────
 
-export interface ComandoPlugin {
-  /** Único dentro do plugin — o app prefixa com o id do plugin. */
+export interface PluginCommand {
+  /** Unique within the plugin — the app prefixes it with the plugin id. */
   id: string;
-  nome: string;
-  executa: () => void | Promise<void>;
+  name: string;
+  run: () => void | Promise<void>;
 }
 
-export interface PainelPlugin {
-  /** Único dentro do plugin. Vira a rota /plugin/<plugin>/<id>. */
+export interface PluginPanel {
+  /** Unique within the plugin. Becomes the route /plugin/<plugin>/<id>. */
   id: string;
-  titulo: string;
+  title: string;
   /**
-   * Monta o painel dentro de `el` (DOM puro — use o framework que quiser).
-   * Pode devolver uma função de limpeza, chamada quando o painel fecha.
+   * Mounts the panel inside `el` (plain DOM — use whatever framework you like).
+   * May return a cleanup function, called when the panel closes.
    */
-  monta: (el: HTMLElement) => void | (() => void);
+  mount: (el: HTMLElement) => void | (() => void);
 }
 
-// ── a API ──────────────────────────────────────────────────────────────────
+// ── the API ────────────────────────────────────────────────────────────────
 
 export interface Bancada {
-  readonly versaoApi: string;
-  readonly plugin: { id: string; nome: string };
+  readonly apiVersion: string;
+  readonly plugin: { id: string; name: string };
 
-  comandos: {
-    /** Aparece na paleta (Ctrl+P). Removido sozinho quando o plugin desliga. */
-    adiciona(c: ComandoPlugin): void;
-    /** Roda um comando do app ou de outro plugin pelo id completo. */
-    executa(id: string): Promise<void>;
+  commands: {
+    /** Shows up in the palette (Ctrl+P). Removed on its own when the plugin is disabled. */
+    add(c: PluginCommand): void;
+    /** Runs a command from the app or from another plugin by its full id. */
+    run(id: string): Promise<void>;
   };
 
-  eventos: {
-    /** Desinscrição automática quando o plugin desliga. */
-    escuta<K extends keyof EventosPlugin>(nome: K, fn: (dado: EventosPlugin[K]) => void): void;
+  events: {
+    /** Unsubscribed automatically when the plugin is disabled. */
+    on<K extends keyof PluginEvents>(name: K, fn: (data: PluginEvents[K]) => void): void;
   };
 
-  notas: {
-    lista(): NotaInfo[];
-    le(path: string): Promise<string>;
-    /** Grava e reindexa. Cria a pasta se precisar. */
-    escreve(path: string, texto: string): Promise<void>;
-    /** Cria com nome único e devolve o caminho. */
-    cria(titulo: string, op?: { pasta?: string; projeto?: string; corpo?: string }): Promise<string>;
-    existe(path: string): Promise<boolean>;
-    /** Abre a nota na tela de Notas. */
-    abre(path: string): void;
-    /** A nota aberta agora na tela de Notas, se houver. */
-    aberta(): string | null;
-    busca(termo: string): Promise<Array<{ path: string; titulo: string }>>;
-    /** Todos os [[links]] do vault. Para grafo, índice, análise. */
-    ligacoes(): Promise<Ligacao[]>;
-    /** Para qual nota um `[[alvo]]` aponta (regra do Obsidian). */
-    resolve(alvo: string): string | null;
+  notes: {
+    list(): NoteInfo[];
+    read(path: string): Promise<string>;
+    /** Writes and reindexes. Creates the folder if needed. */
+    write(path: string, text: string): Promise<void>;
+    /** Creates with a unique name and returns the path. */
+    create(title: string, options?: { folder?: string; project?: string; body?: string }): Promise<string>;
+    exists(path: string): Promise<boolean>;
+    /** Opens the note on the Notes screen. */
+    open(path: string): void;
+    /** The note open right now on the Notes screen, if any. */
+    active(): string | null;
+    search(term: string): Promise<Array<{ path: string; title: string }>>;
+    /** Every [[link]] in the vault. For a graph, an index, analysis. */
+    links(): Promise<Link[]>;
+    /** Which note a `[[target]]` points to (Obsidian's rule). */
+    resolve(target: string): string | null;
   };
 
-  tarefas: {
-    lista(): TarefaInfo[];
-    cria(t: { titulo: string; projeto?: number | null; prazo?: string | null; status?: Status }): Promise<number>;
-    move(id: number, para: Status): Promise<void>;
-    abre(id: number): void;
-    /** A sessão rodando agora, se houver. */
-    rodando(): SessaoInfo | null;
-    /** Sessões de um dia local ('AAAA-MM-DD'; padrão: hoje). */
-    sessoesDoDia(dia?: string): Promise<SessaoInfo[]>;
+  tasks: {
+    list(): TaskInfo[];
+    create(t: { title: string; project?: number | null; due?: string | null; status?: Status }): Promise<number>;
+    move(id: number, to: Status): Promise<void>;
+    open(id: number): void;
+    /** The session running right now, if any. */
+    running(): SessionInfo | null;
+    /** Sessions of a local day ('YYYY-MM-DD'; default: today). */
+    sessionsOn(day?: string): Promise<SessionInfo[]>;
   };
 
-  projetos: {
-    lista(): ProjetoInfo[];
+  projects: {
+    list(): ProjectInfo[];
   };
 
   editor: {
     /**
-     * Extensão do CodeMirror 6 para o editor de notas. Use as classes de
-     * `bancada.cm` — um plugin carregado não consegue importar o CodeMirror
-     * por conta própria, e duas cópias dele não conversam.
+     * CodeMirror 6 extension for the note editor. Use the classes from
+     * `bancada.cm` — a loaded plugin cannot import CodeMirror on its own,
+     * and two copies of it do not talk to each other.
      */
-    registraExtensao(ext: unknown): void;
+    registerExtension(ext: unknown): void;
   };
 
-  /** Os módulos do CodeMirror 6 que o app usa: `view`, `state`, `language`. */
+  /** The CodeMirror 6 modules the app uses: `view`, `state`, `language`. */
   readonly cm: { view: unknown; state: unknown; language: unknown };
 
   ui: {
-    toast(mensagem: string, tom?: 'ok' | 'aviso' | 'erro'): void;
-    /** Painel próprio, listado na barra lateral. */
-    adicionaPainel(p: PainelPlugin): void;
-    /** Navega para um painel deste plugin. */
-    abrePainel(id: string): void;
-    /** CSS injetado enquanto o plugin estiver ligado. */
-    adicionaEstilo(css: string): void;
+    notice(message: string, tone?: 'ok' | 'warning' | 'error'): void;
+    /** A panel of its own, listed in the sidebar. */
+    addPanel(p: PluginPanel): void;
+    /** Navigates to a panel of this plugin. */
+    openPanel(id: string): void;
+    /** CSS injected for as long as the plugin is enabled. */
+    addStyle(css: string): void;
   };
 
-  /** Configuração do plugin, gravada em .bancada/plugins/<id>/data.json. */
-  dados: {
-    carrega<T = unknown>(): Promise<T | null>;
-    salva(dados: unknown): Promise<void>;
+  /** Plugin settings, saved in .bancada/plugins/<id>/data.json. */
+  data: {
+    load<T = unknown>(): Promise<T | null>;
+    save(data: unknown): Promise<void>;
   };
 
-  /** Registra qualquer limpeza extra para quando o plugin desligar. */
-  aoDesligar(fn: () => void): void;
+  /** Registers any extra cleanup for when the plugin is disabled. */
+  onUnload(fn: () => void): void;
 }
 
 /**
- * O que `main.js` exporta como default: um objeto com `aoLigar`, ou uma
- * classe cujas instâncias têm `aoLigar`. `aoDesligar` é opcional — tudo que
- * foi registrado pela API é desfeito sozinho.
+ * What `main.js` exports as default: an object with `onload`, or a class
+ * whose instances have `onload`. `onunload` is optional — everything that
+ * was registered through the API is undone on its own.
  */
-export interface DefinicaoPlugin {
-  aoLigar(bancada: Bancada): void | Promise<void>;
-  aoDesligar?(): void;
+export interface PluginDefinition {
+  onload(bancada: Bancada): void | Promise<void>;
+  onunload?(): void;
 }

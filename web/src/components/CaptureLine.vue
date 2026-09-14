@@ -1,124 +1,124 @@
 <script setup lang="ts">
-// A ÚNICA forma de criar tarefa no app.
+// The ONLY way to create a task in the app.
 //
-// Antes eram quatro: o botão da topbar (que só navegava), a linha do Backlog
-// (a única com tokens), o campo do Quadro (sem tokens, criava órfã) e um
-// wrapper morto no store. Mesma aparência, gramáticas diferentes.
+// There used to be four: the topbar button (which only navigated), the line on
+// the Backlog screen (the only one with tokens), the Board field (no tokens, it
+// created orphans) and a dead wrapper in the store. Same look, different grammars.
 //
-// Aqui `#` deixa de ser adivinhação: abre a lista, e o projeto vira um pill
-// dentro do campo. Enter com a lista aberta ESCOLHE; Enter com ela fechada
-// GRAVA. Um Enter servindo para duas coisas é o bug clássico desta tela.
+// Here `#` stops being guesswork: it opens the list, and the project becomes a pill
+// inside the field. Enter with the list open PICKS; Enter with it closed
+// SAVES. One Enter doing two jobs is the classic bug of this screen.
 import { computed, nextTick, ref, watch } from 'vue';
 import { CornerDownLeft, X } from 'lucide-vue-next';
-import ChipProjeto from './ProjectChip.vue';
-import ListaProjetos from './ProjectList.vue';
+import ProjectChip from './ProjectChip.vue';
+import ProjectList from './ProjectList.vue';
 import type { Project, TaskStatus } from '../lib/types';
-import { analisa } from '../lib/capture';
+import { parseCapture } from '../lib/capture';
 import * as api from '../lib/db';
-import { criaProjeto, projetoDe, projetos, recarregaTudo } from '../lib/store';
+import { createProject, getProject, projects, reloadAll } from '../lib/store';
 import { toast } from '../lib/toast';
-import { emite } from '../lib/events';
+import { emitEvent } from '../lib/events';
 
 const props = withDefaults(defineProps<{
-  /** Estar na tela do projeto JÁ é a atribuição — não se digita `#` ali. */
-  projetoFixo?: number | null;
-  /** Onde a tarefa nasce. O Quadro cria direto na fila; o resto, no backlog. */
-  statusInicial?: TaskStatus;
-  autofoco?: boolean;
+  /** Being on the project's screen ALREADY is the assignment — nobody types `#` there. */
+  fixedProjectId?: number | null;
+  /** Where the task is born. The Board creates straight into the queue; everything else, in the backlog. */
+  initialStatus?: TaskStatus;
+  autofocus?: boolean;
   placeholder?: string;
-  /** Dicas de token embaixo do campo. Some no quick-add, que é mais enxuto. */
-  dicas?: boolean;
+  /** Token hints under the field. Hidden in quick-add, which is leaner. */
+  hints?: boolean;
 }>(), {
-  projetoFixo: null, statusInicial: 'backlog', autofoco: false, dicas: true,
-  placeholder: 'o que precisa ser feito…',
+  fixedProjectId: null, initialStatus: 'backlog', autofocus: false, hints: true,
+  placeholder: 'what needs doing…',
 });
 
-const emit = defineEmits<{ criada: [number] }>();
+const emit = defineEmits<{ created: [number] }>();
 
-const campo = ref<HTMLInputElement | null>(null);
-const lista = ref<InstanceType<typeof ListaProjetos> | null>(null);
-const linha = ref('');
-const escolhido = ref<Project | null>(null);
-/** Posição do `#` que abriu a lista. null = lista fechada. */
-const tokenIni = ref<number | null>(null);
-const consulta = ref('');
+const inputEl = ref<HTMLInputElement | null>(null);
+const list = ref<InstanceType<typeof ProjectList> | null>(null);
+const text = ref('');
+const picked = ref<Project | null>(null);
+/** Position of the `#` that opened the list. null = list closed. */
+const tokenStart = ref<number | null>(null);
+const query = ref('');
 
-const fixo = computed(() => projetoDe(props.projetoFixo ?? null) ?? null);
-/** O que vai valer ao gravar: escolhido > digitado > o da tela. */
-const previa = computed(() => analisa(linha.value, projetos.value));
-const projetoFinal = computed(() => escolhido.value ?? previa.value.projeto ?? fixo.value);
-const aberta = computed(() => tokenIni.value !== null);
+const fixedProject = computed(() => getProject(props.fixedProjectId ?? null) ?? null);
+/** What counts on save: picked > typed > the screen's. */
+const preview = computed(() => parseCapture(text.value, projects.value));
+const finalProject = computed(() => picked.value ?? preview.value.project ?? fixedProject.value);
+const listOpen = computed(() => tokenStart.value !== null);
 
-/** Acha o `#` que o caret está editando. Só abre em início de palavra. */
-function detecta(): void {
-  const el = campo.value;
+/** Finds the `#` the caret is editing. Only opens at the start of a word. */
+function detectToken(): void {
+  const el = inputEl.value;
   if (!el) return;
   const caret = el.selectionStart ?? 0;
-  const antes = linha.value.slice(0, caret);
-  const h = antes.lastIndexOf('#');
-  if (h < 0 || (h > 0 && !/\s/.test(antes[h - 1]))) { tokenIni.value = null; return; }
-  const q = antes.slice(h + 1);
-  // duas palavras sem escolher nada: quem está digitando texto, não buscando
-  if (q.length > 40 || /\s\s/.test(q)) { tokenIni.value = null; return; }
-  tokenIni.value = h;
-  consulta.value = q;
+  const before = text.value.slice(0, caret);
+  const h = before.lastIndexOf('#');
+  if (h < 0 || (h > 0 && !/\s/.test(before[h - 1]))) { tokenStart.value = null; return; }
+  const q = before.slice(h + 1);
+  // two words without picking anything: this person is typing text, not searching
+  if (q.length > 40 || /\s\s/.test(q)) { tokenStart.value = null; return; }
+  tokenStart.value = h;
+  query.value = q;
 }
 
-watch(linha, () => nextTick(detecta));
+watch(text, () => nextTick(detectToken));
 
-/** Escolher tira o `#texto` do campo: o vínculo passa a viver no pill. */
-function fixaProjeto(p: Project | null): void {
-  escolhido.value = p;
-  const ini = tokenIni.value;
-  tokenIni.value = null;
-  if (ini == null || !campo.value) return;
-  const el = campo.value;
+/** Picking removes the `#text` from the field: the link now lives in the pill. */
+function pinProject(p: Project | null): void {
+  picked.value = p;
+  const start = tokenStart.value;
+  tokenStart.value = null;
+  if (start == null || !inputEl.value) return;
+  const el = inputEl.value;
   const caret = el.selectionStart ?? 0;
-  linha.value = (linha.value.slice(0, ini) + linha.value.slice(caret)).replace(/\s{2,}/g, ' ');
-  nextTick(() => { el.focus(); el.setSelectionRange(ini, ini); });
+  text.value = (text.value.slice(0, start) + text.value.slice(caret)).replace(/\s{2,}/g, ' ');
+  nextTick(() => { el.focus(); el.setSelectionRange(start, start); });
 }
 
-async function criaEFixa(nome: string): Promise<void> {
-  const p = await criaProjeto(nome);
-  if (p) { fixaProjeto(p); toast.ok(`Projeto ${p.name} criado`); }
+async function createAndPin(name: string): Promise<void> {
+  const p = await createProject(name);
+  if (p) { pinProject(p); toast.ok(`Project ${p.name} created`); }
 }
 
-async function registra(paraFila: boolean): Promise<void> {
-  const a = analisa(linha.value, projetos.value);
-  if (!a.titulo) { linha.value = ''; return; }   // linha vazia não é erro, é nada
-  const destino: TaskStatus = paraFila ? 'fila' : props.statusInicial;
+async function submit(toQueue: boolean): Promise<void> {
+  const a = parseCapture(text.value, projects.value);
+  if (!a.title) { text.value = ''; return; }   // an empty line isn't an error, it's nothing
+  const target: TaskStatus = toQueue ? 'queued' : props.initialStatus;
   try {
-    const id = await api.capturaTarefa(a.titulo, projetoFinal.value?.id ?? null, a.kind, a.prazo);
-    if (destino !== 'backlog') await api.moveTask(id, destino);
-    emite('tarefa:criada', { id, titulo: a.titulo, projeto: projetoFinal.value?.id ?? null });
-    linha.value = '';
-    tokenIni.value = null;
-    // O projeto NÃO é zerado: despejar oito tarefas no mesmo projeto exigia
-    // digitar `#proj` oito vezes. Quem quiser trocar usa o ✕ do pill.
-    await recarregaTudo();
-    emit('criada', id);
-    // O cursor não pode andar: a próxima tarefa vem logo atrás.
+    const id = await api.captureTask(a.title, finalProject.value?.id ?? null, a.kind, a.due);
+    if (target !== 'backlog') await api.moveTask(id, target);
+    emitEvent('task:created', { id, title: a.title, project: finalProject.value?.id ?? null });
+    text.value = '';
+    tokenStart.value = null;
+    // The project is NOT reset: dumping eight tasks into the same project used to
+    // mean typing `#proj` eight times. To switch, use the pill's ✕.
+    await reloadAll();
+    emit('created', id);
+    // The cursor must not move: the next task comes right behind.
     await nextTick();
-    campo.value?.focus();
+    inputEl.value?.focus();
   } catch (e) {
-    toast.erro(api.dbErro(e));
+    toast.error(api.dbError(e));
   }
 }
 
-function tecla(e: KeyboardEvent): void {
-  if (aberta.value) {
-    if (e.key === 'ArrowDown') { e.preventDefault(); lista.value?.mover(1); return; }
-    if (e.key === 'ArrowUp') { e.preventDefault(); lista.value?.mover(-1); return; }
-    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); lista.value?.confirma(); return; }
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); tokenIni.value = null; return; }
+function onKeydown(e: KeyboardEvent): void {
+  if (listOpen.value) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); list.value?.move(1); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); list.value?.move(-1); return; }
+    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); list.value?.accept(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); tokenStart.value = null; return; }
   }
   if (e.key === 'Enter') {
     e.preventDefault();
-    registra(e.ctrlKey || e.metaKey);
+    submit(e.ctrlKey || e.metaKey);
   }
 }
 
-defineExpose({ foca: () => campo.value?.focus() });
+defineExpose({ focus: () => inputEl.value?.focus() });
 </script>
 
 <template>
@@ -127,43 +127,43 @@ defineExpose({ foca: () => campo.value?.focus() });
                 focus-within:ring-accent/20">
       <CornerDownLeft class="h-3.5 w-3.5 flex-none text-fg-subtle" />
 
-      <!-- projeto da tela: contexto, não escolha -->
-      <ChipProjeto v-if="fixo && !escolhido" :codigo="fixo.code" :nome="fixo.name" :cor="fixo.color" />
+      <!-- the screen's project: context, not a choice -->
+      <ProjectChip v-if="fixedProject && !picked" :code="fixedProject.code" :name="fixedProject.name" :color="fixedProject.color" />
 
-      <!-- projeto escolhido nesta linha: removível -->
-      <span v-else-if="escolhido" class="inline-flex flex-none items-center gap-1">
-        <ChipProjeto :codigo="escolhido.code" :nome="escolhido.name" :cor="escolhido.color" />
-        <button type="button" class="text-fg-subtle hover:text-fg" title="Tirar o projeto"
-          @click="escolhido = null; campo?.focus()"><X class="h-3 w-3" /></button>
+      <!-- project picked on this line: removable -->
+      <span v-else-if="picked" class="inline-flex flex-none items-center gap-1">
+        <ProjectChip :code="picked.code" :name="picked.name" :color="picked.color" />
+        <button type="button" class="text-fg-subtle hover:text-fg" title="Remove project"
+          @click="picked = null; inputEl?.focus()"><X class="h-3 w-3" /></button>
       </span>
 
-      <input ref="campo" v-model="linha" :autofocus="autofoco" spellcheck="false" autocomplete="off"
+      <input ref="inputEl" v-model="text" :autofocus="autofocus" spellcheck="false" autocomplete="off"
         class="min-w-0 flex-1 bg-transparent text-[14px] text-fg outline-none placeholder:text-fg-subtle"
         :placeholder="placeholder"
-        @keydown="tecla" @click="detecta" @keyup="detecta"
-        @blur="tokenIni = null">
+        @keydown="onKeydown" @click="detectToken" @keyup="detectToken"
+        @blur="tokenStart = null">
 
-      <span v-if="previa.prazo" class="chip flex-none bg-warn/15 text-warn">
-        {{ new Date(previa.prazo).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }}
+      <span v-if="preview.due" class="chip flex-none bg-warn/15 text-warn">
+        {{ new Date(preview.due).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) }}
       </span>
-      <span v-if="previa.kind !== 'trabalho'" class="chip flex-none"
-        :class="previa.kind === 'reuniao' ? 'bg-reuniao/15 text-reuniao' : 'bg-surface-3 text-fg-muted'">
-        {{ previa.kind === 'reuniao' ? 'reunião' : 'admin' }}
+      <span v-if="preview.kind !== 'work'" class="chip flex-none"
+        :class="preview.kind === 'meeting' ? 'bg-meeting/15 text-meeting' : 'bg-surface-3 text-fg-muted'">
+        {{ preview.kind === 'meeting' ? 'meeting' : 'admin' }}
       </span>
     </div>
 
-    <!-- a lista do `#`: ancorada no campo, não no caret -->
-    <div v-if="aberta" class="absolute left-0 top-[calc(100%+6px)] z-50 w-[320px]"
+    <!-- the `#` list: anchored to the field, not to the caret -->
+    <div v-if="listOpen" class="absolute left-0 top-[calc(100%+6px)] z-50 w-[320px]"
          @mousedown.prevent>
-      <ListaProjetos ref="lista" :consulta="consulta" @escolhe="fixaProjeto" @cria="criaEFixa" />
+      <ProjectList ref="list" :query="query" @pick="pinProject" @create="createAndPin" />
     </div>
 
-    <div v-if="dicas" class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-fg-subtle">
-      <span><b class="font-semibold text-fg-muted">enter</b> registra</span>
-      <span><b class="font-semibold text-fg-muted">ctrl+enter</b> vai pra fila</span>
-      <span><b class="font-semibold text-fg-muted">#</b> projeto</span>
-      <span><b class="font-semibold text-fg-muted">!</b> prazo</span>
-      <span><b class="font-semibold text-fg-muted">@</b> reunião · admin</span>
+    <div v-if="hints" class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-fg-subtle">
+      <span><b class="font-semibold text-fg-muted">enter</b> adds</span>
+      <span><b class="font-semibold text-fg-muted">ctrl+enter</b> sends to queue</span>
+      <span><b class="font-semibold text-fg-muted">#</b> project</span>
+      <span><b class="font-semibold text-fg-muted">!</b> due</span>
+      <span><b class="font-semibold text-fg-muted">@</b> meeting · admin</span>
     </div>
   </div>
 </template>

@@ -1,109 +1,109 @@
-// Ciclo de vida dos plugins: descobrir, validar, ligar, desligar.
+// Plugin lifecycle: discover, validate, enable, disable.
 //
-// DOIS TIPOS:
-//   núcleo      — vêm com o app (Nota do dia, Tarefas da nota, Grafo). Usam
-//                 a MESMA API de um plugin de terceiro: se ela não bastasse
-//                 para eles, não bastaria para ninguém.
-//   comunidade  — pastas em <vault>/.bancada/plugins/<id>/ com manifest.json
-//                 e main.js. Rodam com acesso total ao app, como no Obsidian.
+// TWO KINDS:
+//   core        — ship with the app (Daily note, Note tasks, Graph). They use
+//                 the SAME API as a third-party plugin: if it were not enough
+//                 for them, it would not be enough for anyone.
+//   community   — folders in <vault>/.bancada/plugins/<id>/ with manifest.json
+//                 and main.js. They run with full access to the app, as in Obsidian.
 //
-// SEGURANÇA — onde divergimos do Obsidian de propósito:
-// "Confio neste vault" fica gravado NO APP (meta do SQLite, por caminho de
-// vault), nunca num arquivo dentro do vault. Se ficasse no vault, um vault
-// clonado de alguém chegaria com plugins já ligados e executaria código na
-// primeira abertura. Aqui, vault novo = modo restrito, sempre.
+// SECURITY — where we diverge from Obsidian on purpose:
+// "Trust this vault" is saved IN THE APP (SQLite meta, per vault path),
+// never in a file inside the vault. If it lived in the vault, a vault cloned
+// from someone else would arrive with plugins already enabled and run code on
+// the first open. Here, new vault = restricted mode, always.
 
 import { ref } from 'vue';
-import type { DefinicaoPlugin, Manifesto } from './types';
-import { criaApi } from './api';
-import { validaManifesto } from './validation';
+import type { PluginDefinition, PluginManifest } from './types';
+import { createPluginApi } from './api';
+import { validateManifest } from './validation';
 import * as api from '../db';
 import * as vault from '../vault';
-import { vaultAberto } from '../notes';
-import { NUCLEO } from './core';
+import { vaultPath } from '../notes';
+import { CORE_PLUGINS } from './core';
 
-export interface EstadoPlugin {
-  manifesto: Manifesto;
-  origem: 'nucleo' | 'comunidade';
-  ligado: boolean;
-  erro: string | null;
+export interface PluginState {
+  manifest: PluginManifest;
+  origin: 'core' | 'community';
+  enabled: boolean;
+  error: string | null;
 }
 
-export const plugins = ref<EstadoPlugin[]>([]);
-/** Modo restrito: plugins da comunidade não carregam. Por vault. */
-export const restrito = ref(true);
+export const plugins = ref<PluginState[]>([]);
+/** Restricted mode: community plugins do not load. Per vault. */
+export const restricted = ref(true);
 
-interface Vivo { descartes: Array<() => void>; inst: DefinicaoPlugin }
-const vivos = new Map<string, Vivo>();
+interface LivePlugin { disposers: Array<() => void>; instance: PluginDefinition }
+const live = new Map<string, LivePlugin>();
 
-// ── configuração ──────────────────────────────────────────────────────────
+// ── configuration ─────────────────────────────────────────────────────────
 
-interface ConfigVault { confia: boolean; ativos: string[] }
-let nucleoDesligados = new Set<string>();
-let cfgVault: ConfigVault = { confia: false, ativos: [] };
+interface VaultConfig { trusted: boolean; enabled: string[] }
+let coreDisabled = new Set<string>();
+let vaultConfig: VaultConfig = { trusted: false, enabled: [] };
 
-const chaveVault = () => `plugins_vault:${vaultAberto.value ?? ''}`;
+const vaultKey = () => `plugins_vault:${vaultPath.value ?? ''}`;
 
-async function carregaConfig(): Promise<void> {
-  try { nucleoDesligados = new Set(JSON.parse((await api.getMeta('plugins_nucleo_off')) ?? '[]')); } catch { nucleoDesligados = new Set(); }
-  try { cfgVault = { confia: false, ativos: [], ...JSON.parse((await api.getMeta(chaveVault())) ?? '{}') }; } catch { cfgVault = { confia: false, ativos: [] }; }
-  restrito.value = !cfgVault.confia;
+async function loadConfig(): Promise<void> {
+  try { coreDisabled = new Set(JSON.parse((await api.getMeta('plugins_core_off')) ?? '[]')); } catch { coreDisabled = new Set(); }
+  try { vaultConfig = { trusted: false, enabled: [], ...JSON.parse((await api.getMeta(vaultKey())) ?? '{}') }; } catch { vaultConfig = { trusted: false, enabled: [] }; }
+  restricted.value = !vaultConfig.trusted;
 }
-const salvaNucleo = () => api.setMeta('plugins_nucleo_off', JSON.stringify([...nucleoDesligados]));
-const salvaVault = () => api.setMeta(chaveVault(), JSON.stringify(cfgVault));
+const saveCoreConfig = () => api.setMeta('plugins_core_off', JSON.stringify([...coreDisabled]));
+const saveVaultConfig = () => api.setMeta(vaultKey(), JSON.stringify(vaultConfig));
 
-// ── ligar e desligar ──────────────────────────────────────────────────────
+// ── enable and disable ────────────────────────────────────────────────────
 
-function estado(id: string): EstadoPlugin | undefined {
-  return plugins.value.find((p) => p.manifesto.id === id);
-}
-
-function instancia(def: unknown): DefinicaoPlugin {
-  // aceita objeto { aoLigar } ou classe cujas instâncias têm aoLigar
-  if (typeof def === 'function') return new (def as new () => DefinicaoPlugin)();
-  if (def && typeof (def as DefinicaoPlugin).aoLigar === 'function') return def as DefinicaoPlugin;
-  throw new Error('main.js precisa exportar default { aoLigar(bancada) { … } }');
+function stateOf(id: string): PluginState | undefined {
+  return plugins.value.find((p) => p.manifest.id === id);
 }
 
-async function ativa(m: Manifesto, def: unknown, css: string | null): Promise<void> {
-  const e = estado(m.id)!;
-  const descartes: Array<() => void> = [];
+function instantiate(def: unknown): PluginDefinition {
+  // accepts an object { onload } or a class whose instances have onload
+  if (typeof def === 'function') return new (def as new () => PluginDefinition)();
+  if (def && typeof (def as PluginDefinition).onload === 'function') return def as PluginDefinition;
+  throw new Error('main.js must export default { onload(bancada) { … } }');
+}
+
+async function activate(m: PluginManifest, def: unknown, css: string | null): Promise<void> {
+  const s = stateOf(m.id)!;
+  const disposers: Array<() => void> = [];
   try {
-    const inst = instancia(def);
-    const b = criaApi(m, descartes);
-    if (css) b.ui.adicionaEstilo(css);
-    await inst.aoLigar(b);
-    vivos.set(m.id, { descartes, inst });
-    e.ligado = true;
-    e.erro = null;
+    const instance = instantiate(def);
+    const b = createPluginApi(m, disposers);
+    if (css) b.ui.addStyle(css);
+    await instance.onload(b);
+    live.set(m.id, { disposers, instance });
+    s.enabled = true;
+    s.error = null;
   } catch (err) {
-    // Plugin que explode no aoLigar não deixa nada registrado para trás.
-    for (const f of descartes.reverse()) { try { f(); } catch { /* segue */ } }
-    e.ligado = false;
-    e.erro = err instanceof Error ? err.message : String(err);
+    // A plugin that blows up in onload leaves nothing registered behind.
+    for (const f of disposers.reverse()) { try { f(); } catch { /* keep going */ } }
+    s.enabled = false;
+    s.error = err instanceof Error ? err.message : String(err);
     console.error(`[plugin ${m.id}]`, err);
   }
 }
 
-function desativa(id: string): void {
-  const v = vivos.get(id);
-  const e = estado(id);
-  if (e) e.ligado = false;
-  if (!v) return;
-  try { v.inst.aoDesligar?.(); } catch (err) { console.error(`[plugin ${id}] aoDesligar`, err); }
-  for (const f of v.descartes.reverse()) { try { f(); } catch { /* segue */ } }
-  vivos.delete(id);
+function deactivate(id: string): void {
+  const l = live.get(id);
+  const s = stateOf(id);
+  if (s) s.enabled = false;
+  if (!l) return;
+  try { l.instance.onunload?.(); } catch (err) { console.error(`[plugin ${id}] onunload`, err); }
+  for (const f of l.disposers.reverse()) { try { f(); } catch { /* keep going */ } }
+  live.delete(id);
 }
 
 /**
- * Carrega o main.js como módulo ES a partir de um Blob. A CSP do app é nula
- * (tauri.conf.json), então `import()` de blob: funciona no WebView.
+ * Loads main.js as an ES module from a Blob. The app's CSP is null
+ * (tauri.conf.json), so `import()` of a blob: URL works in the WebView.
  */
-async function importaDoVault(id: string): Promise<{ def: unknown; css: string | null }> {
-  const codigo = await vault.leArquivoInterno(`.bancada/plugins/${id}/main.js`);
-  if (!codigo) throw new Error('main.js não encontrado');
-  const css = await vault.leArquivoInterno(`.bancada/plugins/${id}/styles.css`);
-  const url = URL.createObjectURL(new Blob([codigo], { type: 'text/javascript' }));
+async function importFromVault(id: string): Promise<{ def: unknown; css: string | null }> {
+  const code = await vault.readInternalFile(`.bancada/plugins/${id}/main.js`);
+  if (!code) throw new Error('main.js not found');
+  const css = await vault.readInternalFile(`.bancada/plugins/${id}/styles.css`);
+  const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
   try {
     const mod = await import(/* @vite-ignore */ url);
     return { def: mod.default, css };
@@ -112,98 +112,118 @@ async function importaDoVault(id: string): Promise<{ def: unknown; css: string |
   }
 }
 
-// ── descoberta ────────────────────────────────────────────────────────────
+// ── discovery ─────────────────────────────────────────────────────────────
 
-async function descobreComunidade(): Promise<void> {
-  const achados: EstadoPlugin[] = [];
-  for (const pasta of await vault.listaPastasDePlugin()) {
-    const bruto = await vault.leArquivoInterno(`.bancada/plugins/${pasta}/manifest.json`);
-    let manifesto: Manifesto;
-    let erro: string | null = null;
+/**
+ * The example plugin used to be `destaca-todo`, with a Portuguese manifest
+ * (`nome`/`versao`) that the current validator rejects. Migration v4 already
+ * renamed the id in the vault's `enabled` list; this puts the matching folder
+ * in place, so a vault that had the example enabled keeps it working. The old
+ * folder is left on disk (it's the user's vault) and ignored by discovery.
+ */
+const LEGACY_EXAMPLE_FOLDER = 'destaca-todo';
+
+async function upgradeLegacyExample(): Promise<void> {
+  const folders = await vault.listPluginFolders();
+  const { EXAMPLE_PLUGIN } = await import('./example');
+  if (!folders.includes(LEGACY_EXAMPLE_FOLDER) || folders.includes(EXAMPLE_PLUGIN.id)) return;
+  for (const [name, content] of Object.entries(EXAMPLE_PLUGIN.files)) {
+    await vault.writeInternalFile(`.bancada/plugins/${EXAMPLE_PLUGIN.id}/${name}`, content);
+  }
+}
+
+async function discoverCommunity(): Promise<void> {
+  const found: PluginState[] = [];
+  for (const folder of await vault.listPluginFolders()) {
+    if (folder === LEGACY_EXAMPLE_FOLDER) continue;
+    const raw = await vault.readInternalFile(`.bancada/plugins/${folder}/manifest.json`);
+    let manifest: PluginManifest;
+    let error: string | null = null;
     try {
-      manifesto = validaManifesto(JSON.parse(bruto ?? 'null'), pasta);
+      manifest = validateManifest(JSON.parse(raw ?? 'null'), folder);
     } catch (e) {
-      manifesto = { id: pasta, nome: pasta, versao: '?' };
-      erro = e instanceof Error ? e.message : String(e);
+      manifest = { id: folder, name: folder, version: '?' };
+      error = e instanceof Error ? e.message : String(e);
     }
-    achados.push({ manifesto, origem: 'comunidade', ligado: false, erro });
+    found.push({ manifest, origin: 'community', enabled: false, error });
   }
   plugins.value = [
-    ...plugins.value.filter((p) => p.origem === 'nucleo'),
-    ...achados.sort((a, b) => a.manifesto.nome.localeCompare(b.manifesto.nome, 'pt-BR')),
+    ...plugins.value.filter((p) => p.origin === 'core'),
+    ...found.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name, 'en')),
   ];
 }
 
-async function ligaComunidade(id: string): Promise<void> {
-  const e = estado(id);
-  if (!e || e.origem !== 'comunidade' || e.ligado) return;
-  if (e.manifesto.versao === '?') return;   // manifesto inválido: o erro já está no estado
+async function enableCommunity(id: string): Promise<void> {
+  const s = stateOf(id);
+  if (!s || s.origin !== 'community' || s.enabled) return;
+  if (s.manifest.version === '?') return;   // invalid manifest: the error is already in the state
   try {
-    const { def, css } = await importaDoVault(id);
-    await ativa(e.manifesto, def, css);
+    const { def, css } = await importFromVault(id);
+    await activate(s.manifest, def, css);
   } catch (err) {
-    e.erro = err instanceof Error ? err.message : String(err);
+    s.error = err instanceof Error ? err.message : String(err);
   }
 }
 
-// ── API pública deste módulo ──────────────────────────────────────────────
+// ── this module's public API ──────────────────────────────────────────────
 
-/** Chamado depois de abrir o vault. Idempotente: pode rodar a cada troca. */
-export async function iniciaPlugins(): Promise<void> {
-  for (const id of [...vivos.keys()]) desativa(id);
-  plugins.value = NUCLEO.map((n) => ({ manifesto: n.manifesto, origem: 'nucleo' as const, ligado: false, erro: null }));
-  await carregaConfig();
+/** Called after the vault opens. Idempotent: can run on every switch. */
+export async function initPlugins(): Promise<void> {
+  for (const id of [...live.keys()]) deactivate(id);
+  plugins.value = CORE_PLUGINS.map((c) => ({ manifest: c.manifest, origin: 'core' as const, enabled: false, error: null }));
+  await loadConfig();
 
-  for (const n of NUCLEO) {
-    if (!nucleoDesligados.has(n.manifesto.id)) await ativa(n.manifesto, n.definicao, null);
+  for (const c of CORE_PLUGINS) {
+    if (!coreDisabled.has(c.manifest.id)) await activate(c.manifest, c.definition, null);
   }
-  if (!vaultAberto.value) return;
-  await descobreComunidade();
-  if (!restrito.value) for (const id of cfgVault.ativos) await ligaComunidade(id);
+  if (!vaultPath.value) return;
+  await upgradeLegacyExample();
+  await discoverCommunity();
+  if (!restricted.value) for (const id of vaultConfig.enabled) await enableCommunity(id);
 }
 
-export async function alterna(id: string, ligar: boolean): Promise<void> {
-  const e = estado(id);
-  if (!e) return;
-  if (e.origem === 'nucleo') {
-    const n = NUCLEO.find((x) => x.manifesto.id === id)!;
-    if (ligar) { nucleoDesligados.delete(id); await ativa(n.manifesto, n.definicao, null); }
-    else { nucleoDesligados.add(id); desativa(id); }
-    await salvaNucleo();
+export async function setPluginEnabled(id: string, enable: boolean): Promise<void> {
+  const s = stateOf(id);
+  if (!s) return;
+  if (s.origin === 'core') {
+    const c = CORE_PLUGINS.find((x) => x.manifest.id === id)!;
+    if (enable) { coreDisabled.delete(id); await activate(c.manifest, c.definition, null); }
+    else { coreDisabled.add(id); deactivate(id); }
+    await saveCoreConfig();
     return;
   }
-  if (ligar) {
-    if (restrito.value) return;
-    await ligaComunidade(id);
-    if (estado(id)?.ligado) cfgVault.ativos = [...new Set([...cfgVault.ativos, id])];
+  if (enable) {
+    if (restricted.value) return;
+    await enableCommunity(id);
+    if (stateOf(id)?.enabled) vaultConfig.enabled = [...new Set([...vaultConfig.enabled, id])];
   } else {
-    desativa(id);
-    cfgVault.ativos = cfgVault.ativos.filter((x) => x !== id);
+    deactivate(id);
+    vaultConfig.enabled = vaultConfig.enabled.filter((x) => x !== id);
   }
-  await salvaVault();
+  await saveVaultConfig();
 }
 
-/** Sair do modo restrito é confiar ESTE vault — decisão gravada no app. */
-export async function defineRestrito(sim: boolean): Promise<void> {
-  restrito.value = sim;
-  cfgVault.confia = !sim;
-  if (sim) for (const p of plugins.value) if (p.origem === 'comunidade') desativa(p.manifesto.id);
-  await salvaVault();
+/** Leaving restricted mode means trusting THIS vault — a decision saved in the app. */
+export async function setRestricted(on: boolean): Promise<void> {
+  restricted.value = on;
+  vaultConfig.trusted = !on;
+  if (on) for (const p of plugins.value) if (p.origin === 'community') deactivate(p.manifest.id);
+  await saveVaultConfig();
 }
 
-/** Relê a pasta de plugins (instalou um novo, editou um main.js). */
-export async function recarregaComunidade(): Promise<void> {
-  for (const p of plugins.value) if (p.origem === 'comunidade') desativa(p.manifesto.id);
-  await descobreComunidade();
-  if (!restrito.value) for (const id of cfgVault.ativos) await ligaComunidade(id);
+/** Re-reads the plugins folder (installed a new one, edited a main.js). */
+export async function reloadCommunityPlugins(): Promise<void> {
+  for (const p of plugins.value) if (p.origin === 'community') deactivate(p.manifest.id);
+  await discoverCommunity();
+  if (!restricted.value) for (const id of vaultConfig.enabled) await enableCommunity(id);
 }
 
-/** Copia o plugin de exemplo para dentro do vault — o jeito rápido de ver um funcionando. */
-export async function instalaExemplo(): Promise<string> {
-  const { EXEMPLO } = await import('./example');
-  for (const [nome, conteudo] of Object.entries(EXEMPLO.arquivos)) {
-    await vault.escreveArquivoInterno(`.bancada/plugins/${EXEMPLO.id}/${nome}`, conteudo);
+/** Copies the example plugin into the vault — the quick way to see one working. */
+export async function installExamplePlugin(): Promise<string> {
+  const { EXAMPLE_PLUGIN } = await import('./example');
+  for (const [name, content] of Object.entries(EXAMPLE_PLUGIN.files)) {
+    await vault.writeInternalFile(`.bancada/plugins/${EXAMPLE_PLUGIN.id}/${name}`, content);
   }
-  await recarregaComunidade();
-  return EXEMPLO.id;
+  await reloadCommunityPlugins();
+  return EXAMPLE_PLUGIN.id;
 }

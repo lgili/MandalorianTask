@@ -1,61 +1,62 @@
-// Plugin de núcleo: Tarefas da nota.
+// Core plugin: Note tasks.
 //
-// A ata da reunião tem cinco `- [ ]` de ação. Um comando e elas viram
-// tarefas no Bancada, já no projeto da nota. É a ponte entre as duas metades
-// do app: o que se ANOTA vira o que se FAZ, sem redigitar.
+// The meeting minutes have five action `- [ ]` items. One command and they
+// become tasks in Bancada, already in the note's project. It's the bridge
+// between the two halves of the app: what gets WRITTEN DOWN becomes what gets
+// DONE, without retyping.
 
-import type { Bancada, DefinicaoPlugin, Manifesto } from '../types';
+import type { Bancada, PluginDefinition, PluginManifest } from '../types';
 
-export const manifesto: Manifesto = {
-  id: 'tarefas-da-nota',
-  nome: 'Tarefas da nota',
-  versao: '1.0.0',
-  descricao: 'Transforma as caixas "- [ ]" da nota aberta em tarefas, no projeto da nota.',
-  autor: 'Bancada',
+export const manifest: PluginManifest = {
+  id: 'note-tasks',
+  name: 'Note tasks',
+  version: '1.0.0',
+  description: 'Turns the open note\'s "- [ ]" checkboxes into tasks, in the note\'s project.',
+  author: 'Bancada',
 };
 
-const semAcento = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const normalizeTitle = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-/** `[[alvo|apelido]]` -> apelido; `[[alvo]]` -> alvo. Título de tarefa não tem colchete. */
-const semLinks = (s: string) => s.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, a: string, b?: string) => b ?? a);
+/** `[[target|alias]]` -> alias; `[[target]]` -> target. A task title has no brackets. */
+const stripLinks = (s: string) => s.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, a: string, b?: string) => b ?? a);
 
-/** Caixas ABERTAS da nota, fora de bloco de código. */
-export function caixasAbertas(md: string): string[] {
+/** The note's OPEN checkboxes, outside code blocks. */
+export function extractOpenCheckboxes(md: string): string[] {
   const out: string[] = [];
-  let emCodigo = false;
-  for (const linha of md.split(/\r?\n/)) {
-    if (/^\s*(```|~~~)/.test(linha)) { emCodigo = !emCodigo; continue; }
-    if (emCodigo) continue;
-    const m = linha.match(/^\s*[-*+] \[ \] (.+)$/);
+  let inCode = false;
+  for (const line of md.split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) { inCode = !inCode; continue; }
+    if (inCode) continue;
+    const m = line.match(/^\s*[-*+] \[ \] (.+)$/);
     if (m) {
-      const t = semLinks(m[1]).trim();
+      const t = stripLinks(m[1]).trim();
       if (t) out.push(t);
     }
   }
   return out;
 }
 
-export const definicao: DefinicaoPlugin = {
-  aoLigar(b: Bancada) {
-    b.comandos.adiciona({
-      id: 'criar',
-      nome: 'Criar tarefas a partir das caixas desta nota',
-      async executa() {
-        const path = b.notas.aberta();
-        if (!path) { b.ui.toast('Abra uma nota primeiro.', 'aviso'); return; }
-        const caixas = caixasAbertas(await b.notas.le(path));
-        if (!caixas.length) { b.ui.toast('Esta nota não tem caixas abertas.', 'aviso'); return; }
+export const definition: PluginDefinition = {
+  onload(b: Bancada) {
+    b.commands.add({
+      id: 'create',
+      name: "Create tasks from this note's checkboxes",
+      async run() {
+        const path = b.notes.active();
+        if (!path) { b.ui.notice('Open a note first.', 'warning'); return; }
+        const checkboxes = extractOpenCheckboxes(await b.notes.read(path));
+        if (!checkboxes.length) { b.ui.notice('This note has no open checkboxes.', 'warning'); return; }
 
-        const projeto = b.notas.lista().find((n) => n.path === path)?.projeto ?? null;
-        // Rodar o comando duas vezes não pode duplicar: compara com o que já existe.
-        const existentes = new Set(b.tarefas.lista().map((t) => semAcento(t.titulo)));
-        const novas = caixas.filter((c) => !existentes.has(semAcento(c)));
-        for (const titulo of novas) await b.tarefas.cria({ titulo, projeto });
+        const project = b.notes.list().find((n) => n.path === path)?.project ?? null;
+        // Running the command twice must not duplicate: compare against what already exists.
+        const existing = new Set(b.tasks.list().map((t) => normalizeTitle(t.title)));
+        const fresh = checkboxes.filter((c) => !existing.has(normalizeTitle(c)));
+        for (const title of fresh) await b.tasks.create({ title, project });
 
-        const repetidas = caixas.length - novas.length;
-        if (!novas.length) b.ui.toast('Todas as caixas já viraram tarefa.');
-        else b.ui.toast(`${novas.length} ${novas.length === 1 ? 'tarefa criada' : 'tarefas criadas'}`
-          + (repetidas ? ` · ${repetidas} já existia${repetidas === 1 ? '' : 'm'}` : ''));
+        const repeated = checkboxes.length - fresh.length;
+        if (!fresh.length) b.ui.notice('Every checkbox is already a task.');
+        else b.ui.notice(`${fresh.length} ${fresh.length === 1 ? 'task created' : 'tasks created'}`
+          + (repeated ? ` · ${repeated} already existed` : ''));
       },
     });
   },

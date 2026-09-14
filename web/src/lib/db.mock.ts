@@ -1,369 +1,373 @@
-// Espelho de db.ts em memória, para rodar a UI no navegador sem Tauri.
+// In-memory mirror of db.ts, to run the UI in the browser without Tauri.
 //
-// Existe por um motivo prático: ajustar visual recompilando o binário Rust a
-// cada mudança é lento demais, e olhar a tela é a única forma honesta de
-// avaliar design. `pnpm dev:mock` abre o app no navegador com estes dados.
+// It exists for a practical reason: tuning visuals by recompiling the Rust
+// binary on every change is far too slow, and looking at the screen is the only
+// honest way to judge design. `pnpm dev:mock` opens the app in the browser with this data.
 //
-// A API é idêntica à de db.ts — o Vite troca um pelo outro por alias.
+// The API is identical to db.ts — Vite swaps one for the other via alias.
 
 import type {
-  NotaIndice, NotaResumo, Outcome, Project, ResultadoBusca, Session, SessionCard, Task, TaskCard,
-  TaskKind, TaskStatus, Totais, Transition,
+  NoteIndexEntry, NoteSummary, Outcome, Project, SearchResult, Session, SessionCard, Task, TaskCard,
+  TaskKind, TaskStatus, Totals, Transition,
 } from './types';
 import { dayRangeUtc, type DayKey } from './time';
 
-export interface LinhaProjeto {
+export interface ProjectTimeRow {
   project_id: number | null; project_name: string | null; project_code: string | null;
-  project_color: string | null; minutos: number;
+  project_color: string | null; minutes: number;
 }
-export interface LinhaDia { dia: string; kind: TaskKind; minutos: number }
-export interface Fluxo { task_id: number; title: string; lead_h: number; cycle_h: number | null }
+export interface DayTimeRow { day: string; kind: TaskKind; minutes: number }
+export interface TaskFlow { task_id: number; title: string; lead_h: number; cycle_h: number | null }
 
-const AGORA = new Date();
-const em = (dias: number, h: number, m = 0) => {
-  const d = new Date(AGORA); d.setDate(d.getDate() - dias); d.setHours(h, m, 0, 0); return d;
+const NOW = new Date();
+const daysAgo = (days: number, h: number, m = 0) => {
+  const d = new Date(NOW); d.setDate(d.getDate() - days); d.setHours(h, m, 0, 0); return d;
 };
 const iso = (d: Date) => d.toISOString();
 
-const projetos: Project[] = [
-  { id: 1, name: 'Flyback rev C', code: 'CF03B04', color: 'p1', archived_at: null, created_at: iso(em(60, 9)) },
-  { id: 2, name: 'NACQ 2026', code: 'NACQ', color: 'p2', archived_at: null, created_at: iso(em(60, 9)) },
-  { id: 3, name: 'Bancada e infra', code: 'INFRA', color: 'p3', archived_at: null, created_at: iso(em(60, 9)) },
+const projects: Project[] = [
+  { id: 1, name: 'Flyback rev C', code: 'CF03B04', color: 'p1', archived_at: null, created_at: iso(daysAgo(60, 9)) },
+  { id: 2, name: 'NACQ 2026', code: 'NACQ', color: 'p2', archived_at: null, created_at: iso(daysAgo(60, 9)) },
+  { id: 3, name: 'Lab bench and infra', code: 'INFRA', color: 'p3', archived_at: null, created_at: iso(daysAgo(60, 9)) },
 ];
 
-let seqT = 0;
+let taskSeq = 0;
 const T = (o: Partial<Task> & { title: string }): Task => ({
-  id: ++seqT, project_id: null, kind: 'trabalho', status: 'backlog', pos: seqT,
-  due_at: null, notes: null, created_at: iso(em(5, 10)), origem_id: null,
+  id: ++taskSeq, project_id: null, kind: 'work', status: 'backlog', pos: taskSeq,
+  due_at: null, notes: null, created_at: iso(daysAgo(5, 10)), origin_id: null,
   queued_at: null, started_at: null, done_at: null, archived_at: null,
   outcome: null, outcome_note: null, ...o,
 });
 
-const dfmea = T({ title: 'Revisão DFMEA — Flyback rev C', kind: 'reuniao', project_id: 1,
-  status: 'feito', created_at: iso(em(9, 8, 30)), done_at: iso(em(9, 15)) });
-const compras = T({ title: 'Alinhamento semanal com compras', kind: 'reuniao', project_id: 2,
-  status: 'feito', created_at: iso(em(2, 9)), done_at: iso(em(2, 11, 40)) });
+const dfmea = T({ title: 'DFMEA review — Flyback rev C', kind: 'meeting', project_id: 1,
+  status: 'done', created_at: iso(daysAgo(9, 8, 30)), done_at: iso(daysAgo(9, 15)) });
+const purchasing = T({ title: 'Weekly sync with purchasing', kind: 'meeting', project_id: 2,
+  status: 'done', created_at: iso(daysAgo(2, 9)), done_at: iso(daysAgo(2, 11, 40)) });
 
-const tarefas: Task[] = [
-  dfmea, compras,
-  T({ title: 'medir ripple no barramento 400 V com ponteira diferencial', project_id: 1,
-      created_at: iso(em(9, 14, 22)), origem_id: dfmea.id }),
-  T({ title: 'conferir derating do capacitor de saída a 85 °C', project_id: 1,
-      created_at: iso(em(9, 14, 31)), origem_id: dfmea.id }),
-  T({ title: 'adicionar teste de continuidade do snubber no ATE', project_id: 1,
-      created_at: iso(em(9, 14, 44)), origem_id: dfmea.id }),
-  T({ title: 'pedir amostra do driver isolado UCC21540', project_id: 2,
-      created_at: iso(em(2, 11, 18)), origem_id: compras.id }),
-  T({ title: 'cotar indutor alternativo de 47 µH', project_id: 2,
-      created_at: iso(em(2, 11, 29)), origem_id: compras.id }),
-  T({ title: 'estudar topologia LLC para a próxima geração', created_at: iso(em(6, 17, 40)) }),
-  T({ title: 'migrar planilha de perdas para script', project_id: 3, created_at: iso(em(4, 18)) }),
-  T({ title: 'recalibrar a ponteira diferencial (venceu em maio)', project_id: 3,
-      created_at: iso(em(1, 9, 15)) }),
+const tasks: Task[] = [
+  dfmea, purchasing,
+  T({ title: 'measure ripple on the 400 V bus with a differential probe', project_id: 1,
+      created_at: iso(daysAgo(9, 14, 22)), origin_id: dfmea.id }),
+  T({ title: 'check output capacitor derating at 85 °C', project_id: 1,
+      created_at: iso(daysAgo(9, 14, 31)), origin_id: dfmea.id }),
+  T({ title: 'add a snubber continuity test to the ATE', project_id: 1,
+      created_at: iso(daysAgo(9, 14, 44)), origin_id: dfmea.id }),
+  T({ title: 'request a sample of the UCC21540 isolated driver', project_id: 2,
+      created_at: iso(daysAgo(2, 11, 18)), origin_id: purchasing.id }),
+  T({ title: 'quote an alternative 47 µH inductor', project_id: 2,
+      created_at: iso(daysAgo(2, 11, 29)), origin_id: purchasing.id }),
+  T({ title: 'study LLC topology for the next generation', created_at: iso(daysAgo(6, 17, 40)) }),
+  T({ title: 'migrate the loss spreadsheet to a script', project_id: 3, created_at: iso(daysAgo(4, 18)) }),
+  T({ title: 'recalibrate the differential probe (expired in May)', project_id: 3,
+      created_at: iso(daysAgo(1, 9, 15)) }),
 
-  T({ title: 'Fechar eBOM CF03B04 rev C', project_id: 1, status: 'fila',
-      created_at: iso(em(7, 10)), queued_at: iso(em(1, 9)), due_at: iso(em(-2, 12)) }),
-  T({ title: 'Refazer DFMEA da malha de corrente', project_id: 2, status: 'fila',
-      created_at: iso(em(5, 15)), queued_at: iso(em(1, 9)), due_at: iso(em(-9, 12)) }),
-  T({ title: 'Trocar o ventilador da carga eletrônica', project_id: 3, status: 'fila',
-      created_at: iso(em(3, 16)), queued_at: iso(em(1, 9)) }),
+  T({ title: 'Close eBOM CF03B04 rev C', project_id: 1, status: 'queued',
+      created_at: iso(daysAgo(7, 10)), queued_at: iso(daysAgo(1, 9)), due_at: iso(daysAgo(-2, 12)) }),
+  T({ title: 'Redo the current-loop DFMEA', project_id: 2, status: 'queued',
+      created_at: iso(daysAgo(5, 15)), queued_at: iso(daysAgo(1, 9)), due_at: iso(daysAgo(-9, 12)) }),
+  T({ title: 'Replace the electronic load fan', project_id: 3, status: 'queued',
+      created_at: iso(daysAgo(3, 16)), queued_at: iso(daysAgo(1, 9)) }),
 
-  T({ title: 'Ensaio térmico — 3 pontos de carga', project_id: 1, status: 'fazendo',
-      created_at: iso(em(8, 16)), queued_at: iso(em(3, 9)), started_at: iso(em(3, 10, 30)) }),
-  T({ title: 'Revisar layout do snubber RCD', project_id: 1, status: 'fazendo',
-      created_at: iso(em(10, 11)), queued_at: iso(em(4, 9)), started_at: iso(em(4, 13)) }),
+  T({ title: 'Thermal test — 3 load points', project_id: 1, status: 'doing',
+      created_at: iso(daysAgo(8, 16)), queued_at: iso(daysAgo(3, 9)), started_at: iso(daysAgo(3, 10, 30)) }),
+  T({ title: 'Review RCD snubber layout', project_id: 1, status: 'doing',
+      created_at: iso(daysAgo(10, 11)), queued_at: iso(daysAgo(4, 9)), started_at: iso(daysAgo(4, 13)) }),
 
-  T({ title: 'Ensaio EMC pré-compliance', project_id: 1, status: 'feito', outcome: 'entregue',
-      created_at: iso(em(12, 9)), started_at: iso(em(12, 9)), done_at: iso(em(6, 17)) }),
-  T({ title: 'Simulação do snubber no LTspice', project_id: 1, status: 'feito', outcome: 'entregue',
-      created_at: iso(em(14, 9)), started_at: iso(em(11, 9)), done_at: iso(em(10, 17)) }),
-  T({ title: 'Cotação de conectores AC', project_id: 2, status: 'feito', outcome: 'repassada',
-      created_at: iso(em(8, 9)), started_at: iso(em(6, 16)), done_at: iso(em(5, 17)) }),
-  T({ title: 'Organizar datasheets da bancada 2', project_id: 3, kind: 'admin', status: 'feito', outcome: 'descartada',
-      created_at: iso(em(7, 9)), started_at: iso(em(5, 17)), done_at: iso(em(5, 18)) }),
-  T({ title: 'Daily do time de hardware', kind: 'reuniao', status: 'feito',
-      created_at: iso(em(1, 8)), started_at: iso(em(1, 9)), done_at: iso(em(1, 9, 20)) }),
-  T({ title: 'Revisão de projeto — CF03B04', kind: 'reuniao', project_id: 1, status: 'feito',
-      created_at: iso(em(1, 8)), started_at: iso(em(1, 10)), done_at: iso(em(1, 11, 15)) }),
+  T({ title: 'EMC pre-compliance test', project_id: 1, status: 'done', outcome: 'delivered',
+      created_at: iso(daysAgo(12, 9)), started_at: iso(daysAgo(12, 9)), done_at: iso(daysAgo(6, 17)) }),
+  T({ title: 'Snubber simulation in LTspice', project_id: 1, status: 'done', outcome: 'delivered',
+      created_at: iso(daysAgo(14, 9)), started_at: iso(daysAgo(11, 9)), done_at: iso(daysAgo(10, 17)) }),
+  T({ title: 'AC connector quote', project_id: 2, status: 'done', outcome: 'handed_off',
+      created_at: iso(daysAgo(8, 9)), started_at: iso(daysAgo(6, 16)), done_at: iso(daysAgo(5, 17)) }),
+  T({ title: 'Organize bench 2 datasheets', project_id: 3, kind: 'admin', status: 'done', outcome: 'dropped',
+      created_at: iso(daysAgo(7, 9)), started_at: iso(daysAgo(5, 17)), done_at: iso(daysAgo(5, 18)) }),
+  T({ title: 'Hardware team daily', kind: 'meeting', status: 'done',
+      created_at: iso(daysAgo(1, 8)), started_at: iso(daysAgo(1, 9)), done_at: iso(daysAgo(1, 9, 20)) }),
+  T({ title: 'Design review — CF03B04', kind: 'meeting', project_id: 1, status: 'done',
+      created_at: iso(daysAgo(1, 8)), started_at: iso(daysAgo(1, 10)), done_at: iso(daysAgo(1, 11, 15)) }),
 ];
 
-const termico = tarefas.find((t) => t.title.startsWith('Ensaio térmico'))!;
-const snubber = tarefas.find((t) => t.title.startsWith('Revisar layout'))!;
+const thermal = tasks.find((t) => t.title.startsWith('Thermal test'))!;
+const snubber = tasks.find((t) => t.title.startsWith('Review RCD'))!;
 
-let seqS = 0;
-const S = (task_id: number, ini: Date, min: number | null): Session => ({
-  id: ++seqS, task_id, started_at: iso(ini),
-  ended_at: min == null ? null : iso(new Date(ini.getTime() + min * 60000)),
-  tz: 'America/Sao_Paulo', source: 'auto', note: null, created_at: iso(ini),
+let sessionSeq = 0;
+const S = (task_id: number, start: Date, min: number | null): Session => ({
+  id: ++sessionSeq, task_id, started_at: iso(start),
+  ended_at: min == null ? null : iso(new Date(start.getTime() + min * 60000)),
+  tz: 'America/Sao_Paulo', source: 'auto', note: null, created_at: iso(start),
 });
 
-const sessoes: Session[] = [];
-// ruído realista dos últimos 14 dias úteis
-let semente = 4242;
-const rnd = () => (semente = (semente * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-for (let d = 14; d >= 0; d--) {   // inclui HOJE: sem isso a tela Hoje abre vazia
-  const dia = em(d, 9);
-  if (dia.getDay() === 0 || dia.getDay() === 6) continue;
-  const alvo = rnd() > 0.5 ? termico : snubber;
-  const reuniao = tarefas.filter((t) => t.kind === 'reuniao')[Math.floor(rnd() * 2)];
+const sessions: Session[] = [];
+// realistic noise over the last 14 working days
+let seed = 4242;
+const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+for (let d = 14; d >= 0; d--) {   // includes TODAY: without it the Today screen opens empty
+  const day = daysAgo(d, 9);
+  if (day.getDay() === 0 || day.getDay() === 6) continue;
+  const target = rnd() > 0.5 ? thermal : snubber;
+  const meeting = tasks.filter((t) => t.kind === 'meeting')[Math.floor(rnd() * 2)];
   if (d > 0) {
-    sessoes.push(S(alvo.id, em(d, 10, Math.floor(rnd() * 40)), 70 + Math.floor(rnd() * 60)));
-    sessoes.push(S(alvo.id, em(d, 14, Math.floor(rnd() * 30)), 80 + Math.floor(rnd() * 60)));
-    sessoes.push(S(reuniao.id, em(d, 9), 25 + Math.floor(rnd() * 55)));
-    if (rnd() > 0.6) sessoes.push(S(tarefas.find((t) => t.kind === 'admin')!.id, em(d, 17), 30));
+    sessions.push(S(target.id, daysAgo(d, 10, Math.floor(rnd() * 40)), 70 + Math.floor(rnd() * 60)));
+    sessions.push(S(target.id, daysAgo(d, 14, Math.floor(rnd() * 30)), 80 + Math.floor(rnd() * 60)));
+    sessions.push(S(meeting.id, daysAgo(d, 9), 25 + Math.floor(rnd() * 55)));
+    if (rnd() > 0.6) sessions.push(S(tasks.find((t) => t.kind === 'admin')!.id, daysAgo(d, 17), 30));
   } else {
-    // hoje: encaixa antes de AGORA, qualquer que seja a hora
-    const antes = (minAtras: number) => new Date(AGORA.getTime() - minAtras * 60000);
-    sessoes.push(S(reuniao.id, antes(230), 40));
-    sessoes.push(S(alvo.id, antes(180), 95));
-    sessoes.push(S(snubber.id, antes(75), 25));
+    // today: fit everything before NOW, whatever time it is
+    const before = (minAgo: number) => new Date(NOW.getTime() - minAgo * 60000);
+    sessions.push(S(meeting.id, before(230), 40));
+    sessions.push(S(target.id, before(180), 95));
+    sessions.push(S(snubber.id, before(75), 25));
   }
 }
-// Toda tarefa já trabalhada precisa de tempo: uma coluna inteira de "0h00"
-// faz o card parecer quebrado, e esconde justamente o número que é a tese.
-for (const t of tarefas) {
+// Every task that has been worked on needs time: a whole column of "0h00"
+// makes the card look broken, and hides exactly the number that is the point.
+for (const t of tasks) {
   if (t.status === 'backlog') continue;
-  if (sessoes.some((s) => s.task_id === t.id)) continue;
-  const base = t.status === 'feito' ? 3 : 2;
+  if (sessions.some((s) => s.task_id === t.id)) continue;
+  const base = t.status === 'done' ? 3 : 2;
   for (let i = 0; i < base; i++) {
-    sessoes.push(S(t.id, em(4 + i * 2, 9 + Math.floor(rnd() * 6)), 45 + Math.floor(rnd() * 150)));
+    sessions.push(S(t.id, daysAgo(4 + i * 2, 9 + Math.floor(rnd() * 6)), 45 + Math.floor(rnd() * 150)));
   }
 }
 
-// a sessão aberta
-sessoes.push(S(termico.id, new Date(AGORA.getTime() - 47 * 60000), null));
+// the open session
+sessions.push(S(thermal.id, new Date(NOW.getTime() - 47 * 60000), null));
 
 // ── API ────────────────────────────────────────────────────────────────────
-const proj = (id: number | null) => projetos.find((p) => p.id === id);
+const proj = (id: number | null) => projects.find((p) => p.id === id);
 const min = (s: Session) => s.ended_at
   ? Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000) : 0;
 
 export async function db(): Promise<never> { throw new Error('mock'); }
-export function dbErro(e: unknown): string { return e instanceof Error ? e.message : String(e); }
+export function dbError(e: unknown): string { return e instanceof Error ? e.message : String(e); }
 
-export const PALETA = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
-export type Cor = typeof PALETA[number];
+export const PROJECT_COLORS = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
+export type ProjectColor = typeof PROJECT_COLORS[number];
 
-export async function proximaCor(): Promise<Cor> {
-  const uso = new Map<string, number>();
-  for (const p of projetos) if (!p.archived_at && p.color) uso.set(p.color, (uso.get(p.color) ?? 0) + 1);
-  return PALETA.reduce((a, b) => ((uso.get(a) ?? 0) <= (uso.get(b) ?? 0) ? a : b));
+export async function pickNextColor(): Promise<ProjectColor> {
+  const usage = new Map<string, number>();
+  for (const p of projects) if (!p.archived_at && p.color) usage.set(p.color, (usage.get(p.color) ?? 0) + 1);
+  return PROJECT_COLORS.reduce((a, b) => ((usage.get(a) ?? 0) <= (usage.get(b) ?? 0) ? a : b));
 }
 
-export async function listProjects(incluirArquivados = false): Promise<Project[]> {
-  return projetos.filter((p) => incluirArquivados || !p.archived_at)
+export async function listProjects(includeArchived = false): Promise<Project[]> {
+  return projects.filter((p) => includeArchived || !p.archived_at)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-let seqP = 100;
+let projectSeq = 100;
 export async function createProject(
   name: string, code: string | null = null, color: string | null = null,
 ): Promise<number> {
-  const nome = name.trim();
-  if (projetos.some((p) => p.name.toLowerCase() === nome.toLowerCase())) {
+  const trimmed = name.trim();
+  if (projects.some((p) => p.name.toLowerCase() === trimmed.toLowerCase())) {
     throw new Error('UNIQUE constraint failed: projects.name');
   }
   const p: Project = {
-    id: ++seqP, name: nome, code: code?.trim() || null,
-    color: color ?? await proximaCor(), archived_at: null, created_at: new Date().toISOString(),
+    id: ++projectSeq, name: trimmed, code: code?.trim() || null,
+    color: color ?? await pickNextColor(), archived_at: null, created_at: new Date().toISOString(),
   };
-  projetos.push(p);
+  projects.push(p);
   return p.id;
 }
 
 export async function updateProject(id: number, patch: Partial<Project>): Promise<void> {
-  const p = projetos.find((x) => x.id === id); if (p) Object.assign(p, patch);
+  const p = projects.find((x) => x.id === id); if (p) Object.assign(p, patch);
 }
 
 export async function deleteProject(id: number): Promise<void> {
-  const i = projetos.findIndex((p) => p.id === id);
+  const i = projects.findIndex((p) => p.id === id);
   if (i < 0) return;
-  projetos.splice(i, 1);
-  for (const t of tarefas) if (t.project_id === id) t.project_id = null;
+  projects.splice(i, 1);
+  for (const t of tasks) if (t.project_id === id) t.project_id = null;
 }
 
-export async function pintaProjetosSemCor(): Promise<number> {
+export async function backfillProjectColors(): Promise<number> {
   let n = 0;
-  for (const p of projetos) if (!p.color) { p.color = await proximaCor(); n++; }
+  for (const p of projects) if (!p.color) { p.color = await pickNextColor(); n++; }
   return n;
 }
 
-export interface ProjetoResumo extends Project {
-  abertas: number; fazendo: number; feitas: number; total: number;
-  minutos: number; ultima_at: string | null;
+export interface ProjectSummary extends Project {
+  open_count: number; doing_count: number; done_count: number; total_count: number;
+  minutes: number; last_activity_at: string | null;
 }
 
-export async function resumoProjetos(incluirArquivados = false): Promise<ProjetoResumo[]> {
-  const out = projetos.filter((p) => incluirArquivados || !p.archived_at).map((p) => {
-    const suas = tarefas.filter((t) => t.project_id === p.id);
-    const ids = new Set(suas.map((t) => t.id));
-    const sess = sessoes.filter((s) => ids.has(s.task_id));
-    const quandos = [...suas.map((t) => t.created_at), ...sess.map((s) => s.started_at)].sort();
+export async function listProjectSummaries(includeArchived = false): Promise<ProjectSummary[]> {
+  const out = projects.filter((p) => includeArchived || !p.archived_at).map((p) => {
+    const own = tasks.filter((t) => t.project_id === p.id);
+    const ids = new Set(own.map((t) => t.id));
+    const sess = sessions.filter((s) => ids.has(s.task_id));
+    const times = [...own.map((t) => t.created_at), ...sess.map((s) => s.started_at)].sort();
     return {
       ...p,
-      abertas: suas.filter((t) => !t.archived_at && t.status !== 'feito').length,
-      fazendo: suas.filter((t) => !t.archived_at && t.status === 'fazendo').length,
-      feitas: suas.filter((t) => t.status === 'feito').length,
-      total: suas.length,
-      minutos: sess.reduce((a, x) => a + min(x), 0),
-      ultima_at: quandos.length ? quandos[quandos.length - 1] : null,
+      open_count: own.filter((t) => !t.archived_at && t.status !== 'done').length,
+      doing_count: own.filter((t) => !t.archived_at && t.status === 'doing').length,
+      done_count: own.filter((t) => t.status === 'done').length,
+      total_count: own.length,
+      minutes: sess.reduce((a, x) => a + min(x), 0),
+      last_activity_at: times.length ? times[times.length - 1] : null,
     };
   });
-  return out.sort((a, b) => (a.ultima_at ? 0 : 1) - (b.ultima_at ? 0 : 1)
-    || (b.ultima_at ?? '').localeCompare(a.ultima_at ?? '')
+  return out.sort((a, b) => (a.last_activity_at ? 0 : 1) - (b.last_activity_at ? 0 : 1)
+    || (b.last_activity_at ?? '').localeCompare(a.last_activity_at ?? '')
     || a.name.localeCompare(b.name));
 }
 
-export async function tarefasDoProjeto(
-  projectId: number | null, incluirArquivadas = true,
+export async function listProjectTasks(
+  projectId: number | null, includeArchived = true,
 ): Promise<TaskCard[]> {
-  return tarefas
-    .filter((t) => t.project_id === projectId && (incluirArquivadas || !t.archived_at))
+  return tasks
+    .filter((t) => t.project_id === projectId && (includeArchived || !t.archived_at))
     .map(card);
 }
 
-export async function reatribuiProjeto(ids: number[], projectId: number | null): Promise<void> {
-  for (const t of tarefas) if (ids.includes(t.id)) t.project_id = projectId;
+export async function reassignTasks(ids: number[], projectId: number | null): Promise<void> {
+  for (const t of tasks) if (ids.includes(t.id)) t.project_id = projectId;
 }
 
 function card(t: Task): TaskCard {
   const p = proj(t.project_id);
-  const s = sessoes.filter((x) => x.task_id === t.id);
-  const o = tarefas.find((x) => x.id === t.origem_id);
+  const s = sessions.filter((x) => x.task_id === t.id);
+  const o = tasks.find((x) => x.id === t.origin_id);
   return {
     ...t,
     project_name: p?.name ?? null, project_code: p?.code ?? null, project_color: p?.color ?? null,
-    minutos: s.reduce((a, x) => a + min(x), 0), sessoes: s.length,
-    origem_title: o?.title ?? null, origem_kind: o?.kind ?? null,
+    minutes: s.reduce((a, x) => a + min(x), 0), session_count: s.length,
+    origin_title: o?.title ?? null, origin_kind: o?.kind ?? null,
   };
 }
 
 export async function boardTasks(): Promise<TaskCard[]> {
-  return tarefas.filter((t) => !t.archived_at).map(card);
+  return tasks.filter((t) => !t.archived_at).map(card);
 }
-export async function capturaTarefa(title: string, project_id: number | null = null,
-  kind: TaskKind = 'trabalho', due_at: string | null = null): Promise<number> {
+export async function captureTask(title: string, project_id: number | null = null,
+  kind: TaskKind = 'work', due_at: string | null = null): Promise<number> {
   const t = T({ title, project_id, kind, due_at, created_at: new Date().toISOString(),
-    origem_id: sessoes.find((s) => !s.ended_at)?.task_id ?? null });
-  tarefas.unshift(t);
+    origin_id: sessions.find((s) => !s.ended_at)?.task_id ?? null });
+  tasks.unshift(t);
   return t.id;
 }
 export async function updateTask(id: number, patch: Partial<Task>): Promise<void> {
-  const t = tarefas.find((x) => x.id === id); if (t) Object.assign(t, patch);
+  const t = tasks.find((x) => x.id === id); if (t) Object.assign(t, patch);
 }
-export async function concluiTarefa(id: number, outcome: Outcome, nota: string | null = null): Promise<void> {
-  await moveTask(id, 'feito');
-  const t = tarefas.find((x) => x.id === id); if (t) { t.outcome = outcome; t.outcome_note = nota; }
+export async function completeTask(id: number, outcome: Outcome, note: string | null = null): Promise<void> {
+  await moveTask(id, 'done');
+  const t = tasks.find((x) => x.id === id); if (t) { t.outcome = outcome; t.outcome_note = note; }
 }
-export async function transicoes(taskId: number): Promise<Transition[]> {
-  const t = tarefas.find((x) => x.id === taskId); if (!t) return [];
-  const out: Transition[] = [{ id: 1, task_id: taskId, de: null, para: 'backlog', at: t.created_at }];
-  if (t.queued_at) out.push({ id: 2, task_id: taskId, de: 'backlog', para: 'fila', at: t.queued_at });
-  if (t.started_at) out.push({ id: 3, task_id: taskId, de: 'fila', para: 'fazendo', at: t.started_at });
-  if (t.done_at) out.push({ id: 4, task_id: taskId, de: 'fazendo', para: 'feito', at: t.done_at });
+export async function listTransitions(taskId: number): Promise<Transition[]> {
+  const t = tasks.find((x) => x.id === taskId); if (!t) return [];
+  const out: Transition[] = [{ id: 1, task_id: taskId, from_status: null, to_status: 'backlog', at: t.created_at }];
+  if (t.queued_at) out.push({ id: 2, task_id: taskId, from_status: 'backlog', to_status: 'queued', at: t.queued_at });
+  if (t.started_at) out.push({ id: 3, task_id: taskId, from_status: 'queued', to_status: 'doing', at: t.started_at });
+  if (t.done_at) out.push({ id: 4, task_id: taskId, from_status: 'doing', to_status: 'done', at: t.done_at });
   return out;
 }
-export async function sessoesDaTarefa(taskId: number): Promise<Session[]> {
-  return sessoes.filter((s) => s.task_id === taskId).sort((a, b) => b.started_at.localeCompare(a.started_at));
+export async function listTaskSessions(taskId: number): Promise<Session[]> {
+  return sessions.filter((s) => s.task_id === taskId).sort((a, b) => b.started_at.localeCompare(a.started_at));
 }
-export async function desfechos(fromUtc: string, toUtc: string): Promise<Array<{ outcome: Outcome | null; n: number }>> {
+export async function countOutcomes(fromUtc: string, toUtc: string): Promise<Array<{ outcome: Outcome | null; n: number }>> {
   const acc = new Map<Outcome | null, number>();
-  for (const t of tarefas) if (t.done_at && t.done_at >= fromUtc && t.done_at < toUtc)
+  for (const t of tasks) if (t.done_at && t.done_at >= fromUtc && t.done_at < toUtc)
     acc.set(t.outcome, (acc.get(t.outcome) ?? 0) + 1);
   return [...acc].map(([outcome, n]) => ({ outcome, n })).sort((a, b) => b.n - a.n);
 }
-export async function concluidasPorDia(dias: number): Promise<Array<{ dia: string; n: number }>> {
+export async function countCompletedByDay(days: number): Promise<Array<{ day: string; n: number }>> {
   const acc = new Map<string, number>();
-  const lim = new Date(AGORA.getTime() - dias * 86400000).toISOString();
-  for (const t of tarefas) if (t.done_at && t.done_at >= lim) {
+  const since = new Date(NOW.getTime() - days * 86400000).toISOString();
+  for (const t of tasks) if (t.done_at && t.done_at >= since) {
     const d = new Date(t.done_at);
     const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     acc.set(k, (acc.get(k) ?? 0) + 1);
   }
-  return [...acc].map(([dia, n]) => ({ dia, n })).sort((a, b) => a.dia.localeCompare(b.dia));
+  return [...acc].map(([day, n]) => ({ day, n })).sort((a, b) => a.day.localeCompare(b.day));
 }
 export async function deleteTask(id: number): Promise<void> {
-  const i = tarefas.findIndex((t) => t.id === id);
-  if (i >= 0) tarefas.splice(i, 1);
+  const i = tasks.findIndex((t) => t.id === id);
+  if (i >= 0) tasks.splice(i, 1);
 }
-export async function moveTask(id: number, para: TaskStatus): Promise<void> {
-  const t = tarefas.find((x) => x.id === id);
-  if (!t || t.status === para) return;
-  const agora = new Date();
-  for (const s of sessoes) if (!s.ended_at) s.ended_at = iso(agora);
-  if (para === 'fazendo') sessoes.push(S(id, agora, null));
-  t.status = para;
-  if (para === 'feito') t.done_at = iso(agora); else t.done_at = null;
-  if (para === 'fazendo' && !t.started_at) t.started_at = iso(agora);
+export async function moveTask(id: number, to: TaskStatus): Promise<void> {
+  const t = tasks.find((x) => x.id === id);
+  if (!t || t.status === to) return;
+  const now = new Date();
+  for (const s of sessions) if (!s.ended_at) s.ended_at = iso(now);
+  if (to === 'doing') sessions.push(S(id, now, null));
+  t.status = to;
+  if (to === 'done') t.done_at = iso(now); else t.done_at = null;
+  if (to === 'doing' && !t.started_at) t.started_at = iso(now);
+  // Same as db.sql.ts: first entry into the queue is stamped, and leaving
+  // Done forgets how the task ended.
+  if (to === 'queued' && !t.queued_at) t.queued_at = iso(now);
+  if (to !== 'done') { t.outcome = null; t.outcome_note = null; }
 }
-export async function reordena(): Promise<void> {}
-export async function arquivaFeitos(): Promise<number> { return 0; }
+export async function reorderTask(): Promise<void> {}
+export async function archiveDoneTasks(): Promise<number> { return 0; }
 
-function sessCard(s: Session): SessionCard {
-  const t = tarefas.find((x) => x.id === s.task_id)!;
+function sessionCard(s: Session): SessionCard {
+  const t = tasks.find((x) => x.id === s.task_id)!;
   const p = proj(t.project_id);
   return { ...s, title: t.title, kind: t.kind, project_name: p?.name ?? null,
     project_code: p?.code ?? null, project_color: p?.color ?? null };
 }
 
-export async function sessaoAberta(): Promise<SessionCard | null> {
-  const s = sessoes.find((x) => !x.ended_at);
-  return s ? sessCard(s) : null;
+export async function getOpenSession(): Promise<SessionCard | null> {
+  const s = sessions.find((x) => !x.ended_at);
+  return s ? sessionCard(s) : null;
 }
-export async function pausa(): Promise<void> {
-  for (const s of sessoes) if (!s.ended_at) s.ended_at = new Date().toISOString();
+export async function pauseSession(): Promise<void> {
+  for (const s of sessions) if (!s.ended_at) s.ended_at = new Date().toISOString();
 }
-export async function sessoesDoDia(key: DayKey): Promise<SessionCard[]> {
+export async function listDaySessions(key: DayKey): Promise<SessionCard[]> {
   const { from, to } = dayRangeUtc(key);
-  return sessoes.filter((s) => s.started_at >= from && s.started_at < to)
-    .sort((a, b) => a.started_at.localeCompare(b.started_at)).map(sessCard);
+  return sessions.filter((s) => s.started_at >= from && s.started_at < to)
+    .sort((a, b) => a.started_at.localeCompare(b.started_at)).map(sessionCard);
 }
-export async function totaisDoDia(key: DayKey): Promise<Totais> {
-  const t: Totais = { total: 0, trabalho: 0, reuniao: 0, admin: 0 };
-  for (const s of await sessoesDoDia(key)) {
+export async function getDayTotals(key: DayKey): Promise<Totals> {
+  const t: Totals = { total: 0, work: 0, meeting: 0, admin: 0 };
+  for (const s of await listDaySessions(key)) {
     if (!s.ended_at) continue;
     const m = min(s); t.total += m; t[s.kind] += m;
   }
   return t;
 }
-export async function criaSessao(): Promise<number> { return 0; }
+export async function createSession(): Promise<number> { return 0; }
 export async function updateSession(id: number, patch: Partial<Session>): Promise<void> {
-  const s = sessoes.find((x) => x.id === id);
+  const s = sessions.find((x) => x.id === id);
   if (s) Object.assign(s, patch);
 }
 export async function deleteSession(id: number): Promise<void> {
-  const i = sessoes.findIndex((s) => s.id === id);
-  if (i >= 0) sessoes.splice(i, 1);
+  const i = sessions.findIndex((s) => s.id === id);
+  if (i >= 0) sessions.splice(i, 1);
 }
 
-export async function horasPorProjeto(fromUtc: string, toUtc: string): Promise<LinhaProjeto[]> {
-  const acc = new Map<number | null, LinhaProjeto>();
-  for (const s of sessoes) {
+export async function sumTimeByProject(fromUtc: string, toUtc: string): Promise<ProjectTimeRow[]> {
+  const acc = new Map<number | null, ProjectTimeRow>();
+  for (const s of sessions) {
     if (!s.ended_at || s.started_at < fromUtc || s.started_at >= toUtc) continue;
-    const t = tarefas.find((x) => x.id === s.task_id)!;
+    const t = tasks.find((x) => x.id === s.task_id)!;
     const p = proj(t.project_id);
     const k = p?.id ?? null;
     if (!acc.has(k)) acc.set(k, { project_id: k, project_name: p?.name ?? null,
-      project_code: p?.code ?? null, project_color: p?.color ?? null, minutos: 0 });
-    acc.get(k)!.minutos += min(s);
+      project_code: p?.code ?? null, project_color: p?.color ?? null, minutes: 0 });
+    acc.get(k)!.minutes += min(s);
   }
-  return [...acc.values()].sort((a, b) => b.minutos - a.minutos);
+  return [...acc.values()].sort((a, b) => b.minutes - a.minutes);
 }
-export async function minutosPorDia(fromUtc: string, toUtc: string): Promise<LinhaDia[]> {
-  const acc = new Map<string, LinhaDia>();
-  for (const s of sessoes) {
+export async function sumTimeByDay(fromUtc: string, toUtc: string): Promise<DayTimeRow[]> {
+  const acc = new Map<string, DayTimeRow>();
+  for (const s of sessions) {
     if (!s.ended_at || s.started_at < fromUtc || s.started_at >= toUtc) continue;
-    const t = tarefas.find((x) => x.id === s.task_id)!;
+    const t = tasks.find((x) => x.id === s.task_id)!;
     const d = new Date(s.started_at);
-    const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const k = `${dia}|${t.kind}`;
-    if (!acc.has(k)) acc.set(k, { dia, kind: t.kind, minutos: 0 });
-    acc.get(k)!.minutos += min(s);
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const k = `${day}|${t.kind}`;
+    if (!acc.has(k)) acc.set(k, { day, kind: t.kind, minutes: 0 });
+    acc.get(k)!.minutes += min(s);
   }
   return [...acc.values()];
 }
-export async function fluxoConcluidas(fromUtc: string, toUtc: string): Promise<Fluxo[]> {
-  return tarefas.filter((t) => t.done_at && t.done_at >= fromUtc && t.done_at < toUtc).map((t) => ({
+export async function listCompletedFlows(fromUtc: string, toUtc: string): Promise<TaskFlow[]> {
+  return tasks.filter((t) => t.done_at && t.done_at >= fromUtc && t.done_at < toUtc).map((t) => ({
     task_id: t.id, title: t.title,
     lead_h: Math.round((new Date(t.done_at!).getTime() - new Date(t.created_at).getTime()) / 360000) / 10,
     cycle_h: t.started_at
@@ -373,59 +377,62 @@ export async function fluxoConcluidas(fromUtc: string, toUtc: string): Promise<F
 export async function getMeta(): Promise<string | null> { return null; }
 export async function setMeta(): Promise<void> {}
 
-// ── notas (índice) ─────────────────────────────────────────────────────────
-const indice = new Map<string, NotaIndice>();
-const semAcento = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// ── notes (index) ──────────────────────────────────────────────────────────
+const index = new Map<string, NoteIndexEntry>();
+const stripAccents = (x: string) => x.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+// Snippet markers, same as the char(2)/char(3) that db.sql.ts asks FTS5 for.
+const MARK_START = String.fromCharCode(2);
+const MARK_END = String.fromCharCode(3);
 
-function resumo(n: NotaIndice): NotaResumo {
-  const ref = n.projeto?.toLowerCase();
-  const p = ref ? (projetos.find((x) => x.code?.toLowerCase() === ref)
-    ?? projetos.find((x) => x.name.toLowerCase() === ref)) : undefined;
+function toSummary(n: NoteIndexEntry): NoteSummary {
+  const ref = n.project_ref?.toLowerCase();
+  const p = ref ? (projects.find((x) => x.code?.toLowerCase() === ref)
+    ?? projects.find((x) => x.name.toLowerCase() === ref)) : undefined;
   return {
-    path: n.path, title: n.title, mtime: n.mtime, projeto: n.projeto, tags: n.tags,
+    path: n.path, title: n.title, mtime: n.mtime, project_ref: n.project_ref, tags: n.tags,
     project_id: p?.id ?? null, project_name: p?.name ?? null, project_color: p?.color ?? null,
   };
 }
 
-export async function notasIndexadas(): Promise<Array<{ path: string; mtime: number }>> {
-  return [...indice.values()].map((n) => ({ path: n.path, mtime: n.mtime }));
+export async function listIndexedNotes(): Promise<Array<{ path: string; mtime: number }>> {
+  return [...index.values()].map((n) => ({ path: n.path, mtime: n.mtime }));
 }
-export async function indexaNota(n: NotaIndice): Promise<void> { indice.set(n.path, n); }
-export async function desindexaNota(path: string): Promise<void> { indice.delete(path); }
-export async function renomeiaNoIndice(de: string, para: string): Promise<void> {
-  const n = indice.get(de); if (!n) return;
-  indice.delete(de); indice.set(para, { ...n, path: para });
+export async function indexNote(n: NoteIndexEntry): Promise<void> { index.set(n.path, n); }
+export async function unindexNote(path: string): Promise<void> { index.delete(path); }
+export async function renameInIndex(from: string, to: string): Promise<void> {
+  const n = index.get(from); if (!n) return;
+  index.delete(from); index.set(to, { ...n, path: to });
 }
-export async function limpaIndice(): Promise<void> { indice.clear(); }
-export async function listaNotas(): Promise<NotaResumo[]> {
-  return [...indice.values()].sort((a, b) => b.mtime - a.mtime).map(resumo);
+export async function clearIndex(): Promise<void> { index.clear(); }
+export async function listNotes(): Promise<NoteSummary[]> {
+  return [...index.values()].sort((a, b) => b.mtime - a.mtime).map(toSummary);
 }
-export async function notasDoProjeto(projectId: number): Promise<NotaResumo[]> {
-  return (await listaNotas()).filter((n) => n.project_id === projectId);
+export async function listProjectNotes(projectId: number): Promise<NoteSummary[]> {
+  return (await listNotes()).filter((n) => n.project_id === projectId);
 }
-export async function backlinks(path: string, nomeNorm: string, pathNorm: string): Promise<NotaResumo[]> {
-  return [...indice.values()]
-    .filter((n) => n.path !== path && (n.links.includes(nomeNorm) || n.links.includes(pathNorm)))
-    .sort((a, b) => b.mtime - a.mtime).map(resumo);
+export async function backlinks(path: string, nameNorm: string, pathNorm: string): Promise<NoteSummary[]> {
+  return [...index.values()]
+    .filter((n) => n.path !== path && (n.links.includes(nameNorm) || n.links.includes(pathNorm)))
+    .sort((a, b) => b.mtime - a.mtime).map(toSummary);
 }
-export async function todasAsLigacoes(): Promise<Array<{ src: string; target: string }>> {
-  return [...indice.values()].flatMap((n) => n.links.map((target) => ({ src: n.path, target })));
+export async function listAllLinks(): Promise<Array<{ src: string; target: string }>> {
+  return [...index.values()].flatMap((n) => n.links.map((target) => ({ src: n.path, target })));
 }
-export async function buscaNotas(q: string, limite = 30): Promise<ResultadoBusca[]> {
-  const termos = q.trim().split(/\s+/).filter(Boolean).map(semAcento);
-  if (!termos.length) return [];
-  const out: Array<ResultadoBusca & { s: number }> = [];
-  for (const n of indice.values()) {
-    const t = semAcento(n.title); const b = semAcento(n.body);
-    // cada termo é prefixo de alguma palavra, como o `"x"*` do FTS5
-    const casa = (alvo: string, termo: string) => alvo.split(/[^\p{L}\p{N}]+/u).some((w) => w.startsWith(termo));
-    if (!termos.every((x) => casa(t, x) || casa(b, x))) continue;
-    const s = termos.reduce((acc, x) => acc + (casa(t, x) ? 5 : 0) + (casa(b, x) ? 1 : 0), 0);
-    const i = b.indexOf(termos[0]);
-    const ini = Math.max(0, i - 60);
-    const pedaco = i < 0 ? n.body.slice(0, 120)
-      : `${ini ? '…' : ''}${n.body.slice(ini, i)}\u0002${n.body.slice(i, i + termos[0].length)}\u0003${n.body.slice(i + termos[0].length, i + 90)}…`;
-    out.push({ path: n.path, title: n.title, trecho: pedaco, s });
+export async function searchNotes(q: string, limit = 30): Promise<SearchResult[]> {
+  const terms = q.trim().split(/\s+/).filter(Boolean).map(stripAccents);
+  if (!terms.length) return [];
+  const out: Array<SearchResult & { s: number }> = [];
+  for (const n of index.values()) {
+    const t = stripAccents(n.title); const b = stripAccents(n.body);
+    // each term is a prefix of some word, like FTS5's `"x"*`
+    const matches = (text: string, term: string) => text.split(/[^\p{L}\p{N}]+/u).some((w) => w.startsWith(term));
+    if (!terms.every((x) => matches(t, x) || matches(b, x))) continue;
+    const s = terms.reduce((acc, x) => acc + (matches(t, x) ? 5 : 0) + (matches(b, x) ? 1 : 0), 0);
+    const i = b.indexOf(terms[0]);
+    const start = Math.max(0, i - 60);
+    const snippet = i < 0 ? n.body.slice(0, 120)
+      : `${start ? '…' : ''}${n.body.slice(start, i)}${MARK_START}${n.body.slice(i, i + terms[0].length)}${MARK_END}${n.body.slice(i + terms[0].length, i + 90)}…`;
+    out.push({ path: n.path, title: n.title, snippet, s });
   }
-  return out.sort((a, b) => b.s - a.s).slice(0, limite).map(({ s: _s, ...r }) => r);
+  return out.sort((a, b) => b.s - a.s).slice(0, limit).map(({ s: _s, ...r }) => r);
 }

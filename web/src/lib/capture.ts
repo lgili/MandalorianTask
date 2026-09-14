@@ -1,138 +1,139 @@
-// Gramática da linha de captura.
+// Grammar of the capture line.
 //
-// Três tokens, e nenhum precisa ser lembrado: `#` abre uma lista, e os outros
-// dois aparecem na dica embaixo do campo. O que não pode é obrigar a tirar a
-// mão do teclado no meio de uma reunião.
+// Three tokens, and none of them has to be memorized: `#` opens a list, and the
+// other two show up in the hint below the field. What must never happen is
+// forcing someone to take their hands off the keyboard in the middle of a meeting.
 //
-//   #cf03    projeto — abre a lista; sem escolher, vale o melhor casamento
-//   !qui     prazo: hoje | amanha | seg..dom | 12/09 | +3d
-//   @reuniao tipo: trabalho (padrão) | reuniao | admin
+//   #cf03     project — opens the list; if nothing is picked, the best match wins
+//   !thu      due: today | tomorrow | mon..sun | 12/09 | +3d
+//   @meeting  type: work (default) | meeting | admin
 //
-// Regra inegociável: NUNCA existe erro de validação aqui. Token que não casa
-// vira texto comum e a tarefa é criada assim mesmo. Interromper alguém com
-// uma mensagem de erro durante uma reunião é pior que perder o metadado.
+// Non-negotiable rule: there is NEVER a validation error here. A token that
+// doesn't match becomes plain text and the task is created anyway. Interrupting
+// someone with an error message during a meeting is worse than losing the metadata.
 
 import type { Project, TaskKind } from './types';
-import { ranqueia } from './projects';
+import { rankProjects } from './projects';
 import { dayKey, parseDayKey } from './time';
 
-export interface Analise {
-  titulo: string;
-  projeto: Project | null;
-  /** UTC ISO no meio-dia local — prazo é dia, não instante. */
-  prazo: string | null;
-  /** 'trabalho' se ninguém disse o contrário. */
+export interface ParsedCapture {
+  title: string;
+  project: Project | null;
+  /** UTC ISO at local noon — a due date is a day, not an instant. */
+  due: string | null;
+  /** 'work' unless someone said otherwise. */
   kind: TaskKind;
-  /** Tokens escritos que não casaram com nada. Só para feedback sutil. */
-  ignorados: string[];
+  /** Written tokens that matched nothing. Only for subtle feedback. */
+  ignored: string[];
 }
 
-/** `@reuniao`, `@admin`, `@trabalho` — e as iniciais. */
-const TIPOS: Record<string, TaskKind> = {
-  r: 'reuniao', reuniao: 'reuniao', 'reunião': 'reuniao',
+/** `@meeting`, `@admin`, `@work` — and their initials. */
+const KIND_TOKENS: Record<string, TaskKind> = {
+  m: 'meeting', meeting: 'meeting',
   a: 'admin', admin: 'admin',
-  t: 'trabalho', trabalho: 'trabalho',
+  w: 'work', work: 'work',
 };
 
-const DIAS: Record<string, number> = {
-  dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6, 'sáb': 6,
+const WEEKDAYS: Record<string, number> = {
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
 };
 
-/** Prazo é um DIA. Guardamos meio-dia local para não escorregar de fuso. */
-function meioDia(d: Date): string {
+/** A due date is a DAY. We store local noon so it doesn't slip across time zones. */
+function localNoon(d: Date): string {
   const x = new Date(d);
   x.setHours(12, 0, 0, 0);
   return x.toISOString();
 }
 
-export function analisaPrazo(token: string, hoje = new Date()): string | null {
+export function parseDue(token: string, today = new Date()): string | null {
   const t = token.toLowerCase();
 
-  if (t === 'hoje') return meioDia(hoje);
-  if (t === 'amanha' || t === 'amanhã') {
-    const d = new Date(hoje); d.setDate(d.getDate() + 1); return meioDia(d);
+  if (t === 'today') return localNoon(today);
+  if (t === 'tomorrow') {
+    const d = new Date(today); d.setDate(d.getDate() + 1); return localNoon(d);
   }
 
-  // +3d — daqui a N dias
+  // +3d — N days from now
   const rel = t.match(/^\+(\d+)d?$/);
   if (rel) {
-    const d = new Date(hoje); d.setDate(d.getDate() + Number(rel[1])); return meioDia(d);
+    const d = new Date(today); d.setDate(d.getDate() + Number(rel[1])); return localNoon(d);
   }
 
-  // seg..dom — o PRÓXIMO desse dia da semana (hoje não conta: "sex" na sexta
-  // quer dizer a sexta que vem, não agora)
-  if (t in DIAS) {
-    const alvo = DIAS[t];
-    const d = new Date(hoje);
-    const delta = ((alvo - d.getDay() + 7) % 7) || 7;
+  // mon..sun — the NEXT occurrence of that weekday (today doesn't count: "fri"
+  // on a Friday means next Friday, not now)
+  if (t in WEEKDAYS) {
+    const target = WEEKDAYS[t];
+    const d = new Date(today);
+    const delta = ((target - d.getDay() + 7) % 7) || 7;
     d.setDate(d.getDate() + delta);
-    return meioDia(d);
+    return localNoon(d);
   }
 
-  // 12/09 ou 12/09/2026
-  const br = t.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
-  if (br) {
-    const dia = Number(br[1]), mes = Number(br[2]);
-    if (dia < 1 || dia > 31 || mes < 1 || mes > 12) return null;
-    let ano = br[3] ? Number(br[3]) : hoje.getFullYear();
-    if (ano < 100) ano += 2000;
-    const d = parseDayKey(`${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`);
-    // dia inválido tipo 31/02 rola para março — recusa em vez de aceitar errado
-    if (d.getMonth() + 1 !== mes || d.getDate() !== dia) return null;
-    // sem ano explícito e a data já passou: é do ano que vem
-    if (!br[3] && dayKey(d) < dayKey(hoje)) d.setFullYear(d.getFullYear() + 1);
-    return meioDia(d);
+  // 12/09 or 12/09/2026
+  const dayMonth = t.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (dayMonth) {
+    const day = Number(dayMonth[1]), month = Number(dayMonth[2]);
+    if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+    let year = dayMonth[3] ? Number(dayMonth[3]) : today.getFullYear();
+    if (year < 100) year += 2000;
+    const d = parseDayKey(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+    // an invalid day like 31/02 rolls over into March — reject it instead of accepting it wrong
+    if (d.getMonth() + 1 !== month || d.getDate() !== day) return null;
+    // no explicit year and the date has already passed: it means next year
+    if (!dayMonth[3] && dayKey(d) < dayKey(today)) d.setFullYear(d.getFullYear() + 1);
+    return localNoon(d);
   }
 
   return null;
 }
 
 /**
- * O melhor casamento para o token, ou null se nada casar.
+ * The best match for the token, or null if nothing matches.
  *
- * Antes, prefixo ambíguo devolvia `null` — a tarefa nascia sem projeto e o
- * único aviso era um risco num chip de 10px. Hoje quem digita `#` vê a lista e
- * escolhe; esta função é só o fallback de quem submeteu sem olhar, e aí o
- * melhor palpite vale mais que a omissão silenciosa.
+ * An ambiguous prefix used to return `null` — the task was born without a
+ * project and the only warning was a strikethrough on a 10px chip. Now whoever
+ * types `#` sees the list and picks; this function is only the fallback for
+ * someone who submitted without looking, and then the best guess is worth more
+ * than a silent omission.
  */
-export function achaProjeto(token: string, projetos: Project[]): Project | null {
+export function findProject(token: string, projects: Project[]): Project | null {
   if (!token) return null;
-  return ranqueia(token, projetos)[0] ?? null;
+  return rankProjects(token, projects)[0] ?? null;
 }
 
-export function analisa(linha: string, projetos: Project[], hoje = new Date()): Analise {
-  const ignorados: string[] = [];
-  let projeto: Project | null = null;
-  let prazo: string | null = null;
-  let kind: TaskKind = 'trabalho';
+export function parseCapture(line: string, projects: Project[], today = new Date()): ParsedCapture {
+  const ignored: string[] = [];
+  let project: Project | null = null;
+  let due: string | null = null;
+  let kind: TaskKind = 'work';
 
-  const palavras = linha.trim().split(/\s+/);
-  const restantes: string[] = [];
+  const words = line.trim().split(/\s+/);
+  const remaining: string[] = [];
 
-  for (const w of palavras) {
-    if (w.startsWith('#') && w.length > 1 && !projeto) {
-      const p = achaProjeto(w.slice(1), projetos);
-      if (p) { projeto = p; continue; }
-      ignorados.push(w);
-      restantes.push(w);            // não casou: vira texto, não some
+  for (const w of words) {
+    if (w.startsWith('#') && w.length > 1 && !project) {
+      const p = findProject(w.slice(1), projects);
+      if (p) { project = p; continue; }
+      ignored.push(w);
+      remaining.push(w);            // no match: it becomes text, it doesn't vanish
       continue;
     }
     if (w.startsWith('@') && w.length > 1) {
-      const k = TIPOS[w.slice(1).toLowerCase()];
+      const k = KIND_TOKENS[w.slice(1).toLowerCase()];
       if (k) { kind = k; continue; }
-      ignorados.push(w);
-      restantes.push(w);
+      ignored.push(w);
+      remaining.push(w);
       continue;
     }
-    if (w.startsWith('!') && w.length > 1 && !prazo) {
-      const d = analisaPrazo(w.slice(1), hoje);
-      if (d) { prazo = d; continue; }
-      ignorados.push(w);
-      restantes.push(w);
+    if (w.startsWith('!') && w.length > 1 && !due) {
+      const d = parseDue(w.slice(1), today);
+      if (d) { due = d; continue; }
+      ignored.push(w);
+      remaining.push(w);
       continue;
     }
-    restantes.push(w);
+    remaining.push(w);
   }
 
-  return { titulo: restantes.join(' ').trim(), projeto, prazo, kind, ignorados };
+  return { title: remaining.join(' ').trim(), project, due, kind, ignored };
 }

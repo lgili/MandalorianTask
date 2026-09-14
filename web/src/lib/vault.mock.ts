@@ -1,211 +1,211 @@
-// Espelho de vault.fs.ts em memória, para `pnpm dev:mock`.
+// In-memory mirror of vault.fs.ts, for `pnpm dev:mock`.
 //
-// As notas de exemplo se ligam entre si E aos projetos do db.mock (CF03B04,
-// NACQ, INFRA) — é a única forma de avaliar a tela de nota com conteúdo que
-// parece trabalho de verdade, e de ver backlink, link quebrado e busca.
+// The sample notes link to each other AND to the db.mock projects (CF03B04,
+// NACQ, INFRA) — it's the only way to judge the note screen with content that
+// looks like real work, and to see backlinks, broken links and search.
 
-export interface Arquivo { path: string; mtime: number; size: number }
+export interface VaultFile { path: string; mtime: number; size: number }
 
-const agora = Date.now();
-const h = (horas: number) => agora - horas * 3600_000;
+const now = Date.now();
+const hoursAgo = (hours: number) => now - hours * 3600_000;
 
-const arquivos = new Map<string, { texto: string; mtime: number }>();
-const poe = (path: string, texto: string, horasAtras: number) =>
-  arquivos.set(path, { texto: texto.trimStart(), mtime: h(horasAtras) });
+const files = new Map<string, { text: string; mtime: number }>();
+const put = (path: string, text: string, ageHours: number) =>
+  files.set(path, { text: text.trimStart(), mtime: hoursAgo(ageHours) });
 
-poe('Início.md', `
-Mapa do que está em andamento. Cada projeto tem uma nota-mãe; as atas de
-reunião ficam em **Reuniões/** e o que é conhecimento reaproveitável em **Técnico/**.
+put('Home.md', `
+Map of what's in progress. Each project has a parent note; meeting minutes
+live in **Meetings/** and reusable knowledge in **Technical/**.
 
-## Projetos
-- [[Flyback rev C]] — fonte de 65 W, rev C da placa
-- [[NACQ 2026]] — nacionalização de componentes
+## Projects
+- [[Flyback rev C]] — 65 W supply, board rev C
+- [[NACQ 2026]] — component localization
 
-## Conhecimento
-- [[Snubber RCD]]
-- [[Derating de capacitores]]
-- [[Ensaio térmico]]
-- [[Topologia LLC]] — ainda não escrevi
+## Knowledge
+- [[RCD snubber]]
+- [[Capacitor derating]]
+- [[Thermal test]]
+- [[LLC topology]] — not written yet
 
-#índice
+#index
 `, 30);
 
-poe('Projetos/Flyback rev C.md', `
+put('Projects/Flyback rev C.md', `
 ---
-projeto: CF03B04
-tags: [fonte, flyback]
+project: CF03B04
+tags: [power-supply, flyback]
 ---
-Fonte flyback de **65 W**, entrada universal. A rev C corrige o aquecimento do
-MOSFET visto no [[Ensaio térmico]] da rev B e troca o grampeador por um
-[[Snubber RCD]] redimensionado.
+**65 W** flyback supply, universal input. Rev C fixes the MOSFET heating
+seen in the rev B [[Thermal test]] and replaces the clamp with a resized
+[[RCD snubber]].
 
-## Decisões
-- Capacitor de saída: 2× 470 µF / 35 V, ver [[Derating de capacitores]]
-- Transformador EE25 mantido — o problema era o snubber, não o núcleo
+## Decisions
+- Output capacitor: 2× 470 µF / 35 V, see [[Capacitor derating]]
+- EE25 transformer kept — the problem was the snubber, not the core
 
-## Pendências
-- [ ] medir ripple no barramento de 400 V com ponteira diferencial
-- [ ] conferir derating do capacitor a 85 °C
-- [x] simular o snubber no LTspice
+## Open items
+- [ ] measure the ripple on the 400 V bus with a differential probe
+- [ ] check capacitor derating at 85 °C
+- [x] simulate the snubber in LTspice
 
-Atas: [[2026-09-01 Revisão DFMEA]]
+Minutes: [[2026-09-01 DFMEA review]]
 `, 3);
 
-poe('Técnico/Snubber RCD.md', `
+put('Technical/RCD snubber.md', `
 ---
-tags: [fonte, snubber]
+tags: [power-supply, snubber]
 ---
-Grampeia o pico de tensão no dreno causado pela indutância de dispersão do
-transformador. Usado no [[Flyback rev C]].
+Clamps the voltage spike on the drain caused by the transformer's leakage
+inductance. Used in [[Flyback rev C]].
 
-## Dimensionamento
+## Sizing
 
-A energia armazenada na dispersão é dissipada no resistor a cada ciclo:
+The energy stored in the leakage inductance is dissipated in the resistor every cycle:
 
 \`\`\`
 P_R = ½ · L_lk · I_pk² · f_sw
 \`\`\`
 
-Regra prática: tensão de grampeamento **1,5×** a tensão refletida. Abaixo
-disso o snubber rouba energia útil; acima, o MOSFET estoura.
+Rule of thumb: clamp voltage at **1.5×** the reflected voltage. Below
+that the snubber steals useful energy; above it, the MOSFET blows.
 
-## Armadilhas
-- Diodo lento = pico passa antes do grampeamento. Usar ultrarrápido.
-- Resistor subdimensionado esquenta mais que o MOSFET — medir no [[Ensaio térmico]].
+## Pitfalls
+- Slow diode = the spike gets through before the clamp. Use an ultrafast one.
+- An undersized resistor runs hotter than the MOSFET — measure it in the [[Thermal test]].
 
-#fonte #chaveada
+#power-supply #switching
 `, 20);
 
-poe('Técnico/Derating de capacitores.md', `
-Vida útil do eletrolítico **dobra a cada 10 °C** abaixo da temperatura
-nominal. Um capacitor de 105 °C / 2000 h trabalhando a 65 °C dura ~32 000 h.
+put('Technical/Capacitor derating.md', `
+Electrolytic capacitor life **doubles every 10 °C** below the rated
+temperature. A 105 °C / 2000 h capacitor running at 65 °C lasts ~32,000 h.
 
-| Temperatura | Vida estimada |
+| Temperature | Estimated life |
 |---|---|
-| 105 °C | 2 000 h |
-| 85 °C | 8 000 h |
-| 65 °C | 32 000 h |
+| 105 °C | 2,000 h |
+| 85 °C | 8,000 h |
+| 65 °C | 32,000 h |
 
-Tensão: trabalhar a **no máximo 80%** da nominal. Ver [[Flyback rev C]].
+Voltage: run at **80% of rated at most**. See [[Flyback rev C]].
 
-#componentes
+#components
 `, 50);
 
-poe('Técnico/Ensaio térmico.md', `
-Procedimento para os 3 pontos de carga (25%, 50%, 100%).
+put('Technical/Thermal test.md', `
+Procedure for the 3 load points (25%, 50%, 100%).
 
-1. Estabilizar 30 min em cada ponto
-2. Termopar tipo K no MOSFET, no diodo de saída e no [[Snubber RCD]]
-3. Registrar ΔT sobre a ambiente, não a temperatura absoluta
+1. Let it settle for 30 min at each point
+2. Type K thermocouple on the MOSFET, on the output diode and on the [[RCD snubber]]
+3. Record ΔT over ambient, not the absolute temperature
 
-> Na rev B o MOSFET passou de 110 °C a 100% de carga. Causa: snubber
-> subdimensionado — ver [[Flyback rev C]].
+> On rev B the MOSFET went past 110 °C at 100% load. Cause: undersized
+> snubber — see [[Flyback rev C]].
 
-#ensaio #procedimento
+#test #procedure
 `, 72);
 
-poe('Reuniões/2026-09-01 Revisão DFMEA.md', `
+put('Meetings/2026-09-01 DFMEA review.md', `
 ---
-projeto: CF03B04
-tags: [reunião, dfmea]
+project: CF03B04
+tags: [meeting, dfmea]
 ---
-# Revisão DFMEA — Flyback rev C
+# DFMEA review — Flyback rev C
 
-**Participantes:** hardware, qualidade, compras
+**Attendees:** hardware, quality, purchasing
 
-## Pontos
-- Modo de falha "capacitor de saída seca" subiu de RPN 120 para 180 depois
-  do [[Ensaio térmico]]. Ação: revisar [[Derating de capacitores]].
-- Snubber: aprovada a troca para RCD — ver [[Snubber RCD]].
+## Points
+- Failure mode "output capacitor dries out" went from RPN 120 to 180 after
+  the [[Thermal test]]. Action: revisit [[Capacitor derating]].
+- Snubber: the switch to RCD was approved — see [[RCD snubber]].
 
-## Ações
-- [ ] medir ripple no barramento 400 V
-- [ ] adicionar teste de continuidade do snubber no ATE
-- [ ] conferir derating do capacitor a 85 °C
+## Actions
+- [ ] measure ripple on the 400 V bus
+- [ ] add a snubber continuity test to the ATE
+- [ ] check capacitor derating at 85 °C
 `, 240);
 
-poe('Reuniões/2026-09-08 Alinhamento compras.md', `
+put('Meetings/2026-09-08 Purchasing sync.md', `
 ---
-projeto: NACQ
-tags: [reunião]
+project: NACQ
+tags: [meeting]
 ---
-# Alinhamento semanal com compras
+# Weekly sync with purchasing
 
-Driver isolado importado com lead time de 26 semanas. Alternativas nacionais
-em avaliação — ver [[NACQ 2026]].
+Imported isolated driver with a 26-week lead time. Local alternatives
+under evaluation — see [[NACQ 2026]].
 
-- [ ] pedir amostra do driver isolado UCC21540
-- [ ] cotar indutor alternativo de 47 µH
+- [ ] request a sample of the UCC21540 isolated driver
+- [ ] quote an alternative 47 µH inductor
 `, 70);
 
-poe('Projetos/NACQ 2026.md', `
+put('Projects/NACQ 2026.md', `
 ---
-projeto: NACQ
+project: NACQ
 ---
-Nacionalização de componentes com lead time acima de 12 semanas.
+Localization of components with lead times over 12 weeks.
 
-Última reunião: [[2026-09-08 Alinhamento compras]]
+Last meeting: [[2026-09-08 Purchasing sync]]
 `, 90);
 
-poe('Diário/2026-09-11.md', `
-Manhã no [[Ensaio térmico]] do flyback. O resistor do snubber chegou a 94 °C —
-dentro do previsto em [[Snubber RCD]], mas perto do limite.
+put('Daily/2026-09-11.md', `
+Morning on the flyback [[Thermal test]]. The snubber resistor reached 94 °C —
+within what [[RCD snubber]] predicts, but close to the limit.
 
-Tarde: ideia de estudar [[Topologia LLC]] para a próxima geração.
+Afternoon: idea to study [[LLC topology]] for the next generation.
 
-- TODO pedir mais um termopar tipo K para o laboratório
-- PERGUNTA o LLC compensa abaixo de 100 W?
+- TODO order one more type K thermocouple for the lab
+- QUESTION is LLC worth it below 100 W?
 `, 1);
 
 let seq = 0;
-const escuta = new Set<(p: string[]) => void>();
+const listeners = new Set<(p: string[]) => void>();
 
-export async function raiz(): Promise<string | null> { return 'C:\\Users\\voce\\Documents\\Bancada'; }
-export async function escolhePasta(): Promise<string | null> { return raiz(); }
-export async function criaVaultPadrao(): Promise<string> { return (await raiz())!; }
+export async function getRoot(): Promise<string | null> { return 'C:\\Users\\you\\Documents\\Bancada'; }
+export async function pickFolder(): Promise<string | null> { return getRoot(); }
+export async function createDefaultVault(): Promise<string> { return (await getRoot())!; }
 
-export async function lista(): Promise<Arquivo[]> {
-  // Mesma regra do vault.fs: pasta oculta (.trash, .obsidian) não entra.
-  return [...arquivos]
+export async function listFiles(): Promise<VaultFile[]> {
+  // Same rule as vault.fs: hidden folders (.trash, .obsidian) are left out.
+  return [...files]
     .filter(([path]) => !path.split('/').some((seg) => seg.startsWith('.')))
-    .map(([path, a]) => ({ path, mtime: a.mtime, size: a.texto.length }));
+    .map(([path, f]) => ({ path, mtime: f.mtime, size: f.text.length }));
 }
-export async function le(path: string): Promise<string> {
-  const a = arquivos.get(path);
-  if (!a) throw new Error(`não existe: ${path}`);
-  return a.texto;
+export async function readFile(path: string): Promise<string> {
+  const f = files.get(path);
+  if (!f) throw new Error(`not found: ${path}`);
+  return f.text;
 }
-export async function info(path: string): Promise<Arquivo> {
-  const a = arquivos.get(path);
-  return { path, mtime: a?.mtime ?? Date.now(), size: a?.texto.length ?? 0 };
+export async function info(path: string): Promise<VaultFile> {
+  const f = files.get(path);
+  return { path, mtime: f?.mtime ?? Date.now(), size: f?.text.length ?? 0 };
 }
-export async function escreve(path: string, texto: string): Promise<Arquivo> {
-  // mtime estritamente crescente: dois saves no mesmo ms não podem empatar
-  arquivos.set(path, { texto, mtime: Date.now() + ++seq });
+export async function writeFile(path: string, text: string): Promise<VaultFile> {
+  // strictly increasing mtime: two saves in the same ms must not tie
+  files.set(path, { text, mtime: Date.now() + ++seq });
   return info(path);
 }
-export async function existe(path: string): Promise<boolean> { return arquivos.has(path); }
-export async function apaga(path: string): Promise<void> { arquivos.delete(path); }
-export async function renomeia(de: string, para: string): Promise<void> {
-  const a = arquivos.get(de);
-  if (!a) return;
-  arquivos.delete(de);
-  arquivos.set(para, { ...a, mtime: Date.now() + ++seq });
+export async function fileExists(path: string): Promise<boolean> { return files.has(path); }
+export async function deleteFile(path: string): Promise<void> { files.delete(path); }
+export async function renameFile(from: string, to: string): Promise<void> {
+  const f = files.get(from);
+  if (!f) return;
+  files.delete(from);
+  files.set(to, { ...f, mtime: Date.now() + ++seq });
 }
-export async function observa(cb: (paths: string[]) => void): Promise<() => void> {
-  escuta.add(cb);
-  return () => { escuta.delete(cb); };
+export async function watchVault(cb: (paths: string[]) => void): Promise<() => void> {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
 }
 
 // ── plugins ────────────────────────────────────────────────────────────────
-const internos = new Map<string, string>();
-export async function listaPastasDePlugin(): Promise<string[]> {
+const internalFiles = new Map<string, string>();
+export async function listPluginFolders(): Promise<string[]> {
   const ids = new Set<string>();
-  for (const k of internos.keys()) {
+  for (const k of internalFiles.keys()) {
     const m = k.match(/^\.bancada\/plugins\/([^/]+)\//);
     if (m) ids.add(m[1]);
   }
   return [...ids];
 }
-export async function leArquivoInterno(rel: string): Promise<string | null> { return internos.get(rel) ?? null; }
-export async function escreveArquivoInterno(rel: string, texto: string): Promise<void> { internos.set(rel, texto); }
+export async function readInternalFile(rel: string): Promise<string | null> { return internalFiles.get(rel) ?? null; }
+export async function writeInternalFile(rel: string, text: string): Promise<void> { internalFiles.set(rel, text); }

@@ -1,10 +1,10 @@
-// Live preview: o markdown aparece formatado, e a sintaxe só volta na linha
-// onde está o cursor. É o modo padrão do Obsidian, e é o que faz um editor de
-// texto puro parecer um editor de documento sem nunca mexer no arquivo.
+// Live preview: markdown shows up formatted, and the syntax only comes back on the
+// line where the cursor is. It is Obsidian's default mode, and it is what makes a
+// plain-text editor feel like a document editor without ever touching the file.
 //
-// Regra única: TEXTO NUNCA É ALTERADO para exibir. Tudo aqui é decoração —
-// esconder, marcar, trocar por widget na tela. O arquivo no disco continua
-// byte a byte o que a pessoa digitou, e o Obsidian abre igual.
+// One rule: TEXT IS NEVER CHANGED for display. Everything here is decoration —
+// hide, mark, swap for a widget on screen. The file on disk stays byte for byte
+// what the person typed, and Obsidian opens it the same.
 
 import {
   Decoration, EditorView, MatchDecorator, ViewPlugin, WidgetType,
@@ -13,67 +13,67 @@ import {
 import { StateEffect, type Range } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 
-/** O componente dispara isto quando a lista de notas muda (link quebrado acende). */
-export const redesenha = StateEffect.define<null>();
+/** The component fires this when the note list changes (a broken link lights up). */
+export const redraw = StateEffect.define<null>();
 
-export interface OpcoesPreview {
-  /** A nota do link existe? Link para nota inexistente aparece apagado. */
-  existe: (alvo: string) => boolean;
+export interface LivePreviewOptions {
+  /** Does the linked note exist? A link to a missing note shows muted. */
+  noteExists: (target: string) => boolean;
 }
 
 // ── widgets ────────────────────────────────────────────────────────────────
 
-class Caixa extends WidgetType {
-  constructor(readonly marcada: boolean, readonly pos: number) { super(); }
-  eq(o: Caixa): boolean { return o.marcada === this.marcada && o.pos === this.pos; }
+class CheckboxWidget extends WidgetType {
+  constructor(readonly checked: boolean, readonly pos: number) { super(); }
+  eq(o: CheckboxWidget): boolean { return o.checked === this.checked && o.pos === this.pos; }
   toDOM(view: EditorView): HTMLElement {
     const el = document.createElement('input');
     el.type = 'checkbox';
-    el.checked = this.marcada;
-    el.className = 'cm-caixa';
-    el.setAttribute('aria-label', this.marcada ? 'Desmarcar' : 'Marcar');
-    // mousedown não pode mover o cursor para a linha — senão a sintaxe
-    // aparece bem na hora do clique e o checkbox some embaixo do dedo.
+    el.checked = this.checked;
+    el.className = 'cm-checkbox';
+    el.setAttribute('aria-label', this.checked ? 'Uncheck' : 'Check');
+    // mousedown must not move the cursor to the line — otherwise the syntax
+    // shows up right at the click and the checkbox vanishes under the finger.
     el.addEventListener('mousedown', (e) => e.preventDefault());
     el.addEventListener('click', (e) => {
       e.preventDefault();
-      view.dispatch({ changes: { from: this.pos + 1, to: this.pos + 2, insert: this.marcada ? ' ' : 'x' } });
+      view.dispatch({ changes: { from: this.pos + 1, to: this.pos + 2, insert: this.checked ? ' ' : 'x' } });
     });
     return el;
   }
   ignoreEvent(): boolean { return false; }
 }
 
-class Marcador extends WidgetType {
+class BulletWidget extends WidgetType {
   eq(): boolean { return true; }
   toDOM(): HTMLElement {
     const el = document.createElement('span');
-    el.className = 'cm-marcador';
+    el.className = 'cm-bullet';
     el.textContent = '•';
     return el;
   }
 }
 
-class Regua extends WidgetType {
+class RuleWidget extends WidgetType {
   eq(): boolean { return true; }
   toDOM(): HTMLElement {
     const el = document.createElement('span');
-    el.className = 'cm-regua';
+    el.className = 'cm-hr';
     return el;
   }
 }
 
-const esconde = Decoration.replace({});
-const marca = (cls: string, attrs?: Record<string, string>) => Decoration.mark({ class: cls, attributes: attrs });
-const linha = (cls: string) => Decoration.line({ class: cls });
+const hideDeco = Decoration.replace({});
+const mark = (cls: string, attrs?: Record<string, string>) => Decoration.mark({ class: cls, attributes: attrs });
+const line = (cls: string) => Decoration.line({ class: cls });
 
-// ── linhas ativas ──────────────────────────────────────────────────────────
+// ── active lines ───────────────────────────────────────────────────────────
 
 /**
- * Linhas onde a sintaxe aparece crua: as tocadas por alguma seleção. Sem
- * foco, nenhuma — o editor parado mostra o documento inteiro formatado.
+ * Lines where the syntax shows raw: the ones touched by any selection. Without
+ * focus, none — an idle editor shows the whole document formatted.
  */
-function linhasAtivas(view: EditorView): Set<number> {
+function activeLines(view: EditorView): Set<number> {
   const s = new Set<number>();
   if (!view.hasFocus) return s;
   for (const r of view.state.selection.ranges) {
@@ -84,8 +84,8 @@ function linhasAtivas(view: EditorView): Set<number> {
   return s;
 }
 
-/** Fim do frontmatter (offset), ou 0. O parser vê `---` como setext/hr. */
-function fimDoFrontmatter(view: EditorView): number {
+/** End of the frontmatter (offset), or 0. The parser sees `---` as setext/hr. */
+function frontmatterEnd(view: EditorView): number {
   const doc = view.state.doc;
   if (doc.lines < 2 || doc.line(1).text !== '---') return 0;
   for (let i = 2; i <= Math.min(doc.lines, 200); i++) {
@@ -94,39 +94,39 @@ function fimDoFrontmatter(view: EditorView): number {
   return 0;
 }
 
-interface Construcao {
-  todas: DecorationSet;
+interface Build {
+  all: DecorationSet;
   /**
-   * Só o que foi ESCONDIDO ou trocado por widget. É isto que vira faixa
-   * atômica para o cursor — se as marcações entrassem aqui, uma palavra em
-   * negrito inteira viraria um bloco que o cursor pula de uma vez.
+   * Only what was HIDDEN or swapped for a widget. This is what becomes an atomic
+   * range for the cursor — if the marks went in here, a whole bold word would
+   * become a block the cursor jumps over in one go.
    */
-  ocultas: DecorationSet;
+  hidden: DecorationSet;
 }
 
-function constroi(view: EditorView, op: OpcoesPreview): Construcao {
-  const ativas = linhasAtivas(view);
+function build(view: EditorView, opts: LivePreviewOptions): Build {
+  const active = activeLines(view);
   const doc = view.state.doc;
-  const naAtiva = (pos: number) => ativas.has(doc.lineAt(pos).number);
+  const onActiveLine = (pos: number) => active.has(doc.lineAt(pos).number);
   const out: Range<Decoration>[] = [];
-  const sumiu: Range<Decoration>[] = [];
-  const fmFim = fimDoFrontmatter(view);
-  const oculta = (de: number, ate: number) => {
-    if (de >= ate) return;
-    const r = esconde.range(de, ate);
-    out.push(r); sumiu.push(r);
+  const gone: Range<Decoration>[] = [];
+  const fmEnd = frontmatterEnd(view);
+  const hide = (start: number, end: number) => {
+    if (start >= end) return;
+    const r = hideDeco.range(start, end);
+    out.push(r); gone.push(r);
   };
-  const troca = (w: WidgetType, de: number, ate: number) => {
-    const r = Decoration.replace({ widget: w }).range(de, ate);
-    out.push(r); sumiu.push(r);
+  const replaceWith = (w: WidgetType, start: number, end: number) => {
+    const r = Decoration.replace({ widget: w }).range(start, end);
+    out.push(r); gone.push(r);
   };
 
-  // Frontmatter: bloco apagado e monoespaçado — as propriedades da nota.
-  if (fmFim) {
-    for (let i = 1; doc.line(i).to <= fmFim; i++) {
+  // Frontmatter: a muted, monospaced block — the note's properties.
+  if (fmEnd) {
+    for (let i = 1; doc.line(i).to <= fmEnd; i++) {
       const l = doc.line(i);
-      out.push(linha(i === 1 ? 'cm-fm cm-fm-ini' : l.to === fmFim ? 'cm-fm cm-fm-fim' : 'cm-fm').range(l.from));
-      if (l.to === fmFim) break;
+      out.push(line(i === 1 ? 'cm-fm cm-fm-start' : l.to === fmEnd ? 'cm-fm cm-fm-end' : 'cm-fm').range(l.from));
+      if (l.to === fmEnd) break;
     }
   }
 
@@ -134,115 +134,115 @@ function constroi(view: EditorView, op: OpcoesPreview): Construcao {
     syntaxTree(view.state).iterate({
       from,
       to,
-      enter(no) {
-        if (no.from < fmFim) return no.to <= fmFim ? false : undefined;
-        const nome = no.name;
+      enter(n) {
+        if (n.from < fmEnd) return n.to <= fmEnd ? false : undefined;
+        const name = n.name;
 
-        // cabeçalhos: a linha ganha a classe; os `#` somem fora do cursor
-        const h = nome.match(/^(?:ATX|Setext)Heading(\d)$/);
-        if (h) { out.push(linha(`cm-h cm-h${h[1]}`).range(doc.lineAt(no.from).from)); return; }
-        if (nome === 'HeaderMark') {
-          if (naAtiva(no.from)) return;
-          const fimMarca = doc.sliceString(no.to, no.to + 1) === ' ' ? no.to + 1 : no.to;
-          if (no.from !== fimMarca) oculta(no.from, fimMarca);
+        // headings: the line gets the class; the `#` disappear away from the cursor
+        const h = name.match(/^(?:ATX|Setext)Heading(\d)$/);
+        if (h) { out.push(line(`cm-h cm-h${h[1]}`).range(doc.lineAt(n.from).from)); return; }
+        if (name === 'HeaderMark') {
+          if (onActiveLine(n.from)) return;
+          const markEnd = doc.sliceString(n.to, n.to + 1) === ' ' ? n.to + 1 : n.to;
+          if (n.from !== markEnd) hide(n.from, markEnd);
           return;
         }
 
-        if (nome === 'StrongEmphasis') { out.push(marca('cm-forte').range(no.from, no.to)); return; }
-        if (nome === 'Emphasis') { out.push(marca('cm-italico').range(no.from, no.to)); return; }
-        if (nome === 'Strikethrough') { out.push(marca('cm-riscado').range(no.from, no.to)); return; }
-        if (nome === 'EmphasisMark' || nome === 'StrikethroughMark') {
-          if (!naAtiva(no.from)) oculta(no.from, no.to);
+        if (name === 'StrongEmphasis') { out.push(mark('cm-strong').range(n.from, n.to)); return; }
+        if (name === 'Emphasis') { out.push(mark('cm-italic').range(n.from, n.to)); return; }
+        if (name === 'Strikethrough') { out.push(mark('cm-strike').range(n.from, n.to)); return; }
+        if (name === 'EmphasisMark' || name === 'StrikethroughMark') {
+          if (!onActiveLine(n.from)) hide(n.from, n.to);
           return;
         }
 
-        if (nome === 'InlineCode') { out.push(marca('cm-codigo').range(no.from, no.to)); return; }
-        if (nome === 'CodeMark') {
-          // Só a crase do código em linha some; a cerca ``` do bloco fica.
-          if (no.node.parent?.name === 'InlineCode' && !naAtiva(no.from)) oculta(no.from, no.to);
+        if (name === 'InlineCode') { out.push(mark('cm-code').range(n.from, n.to)); return; }
+        if (name === 'CodeMark') {
+          // Only the inline-code backtick disappears; the ``` fence of a block stays.
+          if (n.node.parent?.name === 'InlineCode' && !onActiveLine(n.from)) hide(n.from, n.to);
           return;
         }
-        if (nome === 'FencedCode' || nome === 'CodeBlock') {
-          const a = doc.lineAt(no.from).number;
-          const b = doc.lineAt(no.to).number;
+        if (name === 'FencedCode' || name === 'CodeBlock') {
+          const a = doc.lineAt(n.from).number;
+          const b = doc.lineAt(n.to).number;
           for (let i = a; i <= b; i++) {
-            const cls = i === a ? 'cm-bloco cm-bloco-ini' : i === b ? 'cm-bloco cm-bloco-fim' : 'cm-bloco';
-            out.push(linha(cls).range(doc.line(i).from));
+            const cls = i === a ? 'cm-codeblock cm-codeblock-start' : i === b ? 'cm-codeblock cm-codeblock-end' : 'cm-codeblock';
+            out.push(line(cls).range(doc.line(i).from));
           }
-          return false;   // nada de decorar markdown dentro de código
+          return false;   // no decorating markdown inside code
         }
 
-        if (nome === 'Blockquote') {
-          const a = doc.lineAt(no.from).number;
-          const b = doc.lineAt(no.to).number;
-          for (let i = a; i <= b; i++) out.push(linha('cm-citacao').range(doc.line(i).from));
+        if (name === 'Blockquote') {
+          const a = doc.lineAt(n.from).number;
+          const b = doc.lineAt(n.to).number;
+          for (let i = a; i <= b; i++) out.push(line('cm-quote').range(doc.line(i).from));
           return;
         }
-        if (nome === 'QuoteMark') {
-          if (!naAtiva(no.from)) {
-            const fim = doc.sliceString(no.to, no.to + 1) === ' ' ? no.to + 1 : no.to;
-            oculta(no.from, fim);
+        if (name === 'QuoteMark') {
+          if (!onActiveLine(n.from)) {
+            const end = doc.sliceString(n.to, n.to + 1) === ' ' ? n.to + 1 : n.to;
+            hide(n.from, end);
           }
           return;
         }
 
-        if (nome === 'HorizontalRule') {
-          if (!naAtiva(no.from)) troca(new Regua(), no.from, no.to);
+        if (name === 'HorizontalRule') {
+          if (!onActiveLine(n.from)) replaceWith(new RuleWidget(), n.from, n.to);
           return;
         }
 
-        if (nome === 'TaskMarker') {
-          const txt = doc.sliceString(no.from, no.to);
-          const cursorDentro = view.state.selection.ranges.some((r) => r.from > no.from && r.from < no.to);
-          if (!cursorDentro) {
-            troca(new Caixa(/x/i.test(txt), no.from), no.from, no.to);
+        if (name === 'TaskMarker') {
+          const txt = doc.sliceString(n.from, n.to);
+          const cursorInside = view.state.selection.ranges.some((r) => r.from > n.from && r.from < n.to);
+          if (!cursorInside) {
+            replaceWith(new CheckboxWidget(/x/i.test(txt), n.from), n.from, n.to);
           }
           if (/x/i.test(txt)) {
-            const l = doc.lineAt(no.from);
-            if (no.to < l.to) out.push(marca('cm-feita').range(no.to, l.to));
+            const l = doc.lineAt(n.from);
+            if (n.to < l.to) out.push(mark('cm-done').range(n.to, l.to));
           }
           return;
         }
-        if (nome === 'ListMark') {
-          if (naAtiva(no.from)) return;
-          const marcaTxt = doc.sliceString(no.from, no.to);
-          if (!/^[-*+]$/.test(marcaTxt)) return;   // lista numerada mantém o número
-          const depois = doc.sliceString(no.to, no.to + 4);
-          // item de tarefa: o `- ` some, fica só a caixa (como no Obsidian)
-          if (/^ \[[ xX]\]/.test(depois)) oculta(no.from, no.to + 1);
-          else troca(new Marcador(), no.from, no.to);
+        if (name === 'ListMark') {
+          if (onActiveLine(n.from)) return;
+          const markText = doc.sliceString(n.from, n.to);
+          if (!/^[-*+]$/.test(markText)) return;   // a numbered list keeps its number
+          const after = doc.sliceString(n.to, n.to + 4);
+          // task item: the `- ` disappears, only the checkbox is left (like in Obsidian)
+          if (/^ \[[ xX]\]/.test(after)) hide(n.from, n.to + 1);
+          else replaceWith(new BulletWidget(), n.from, n.to);
           return;
         }
 
-        if (nome === 'Link') {
-          out.push(marca('cm-link').range(no.from, no.to));
-          if (naAtiva(no.from)) return;
-          // [texto](url): some o `[` e tudo de `](` até `)`
-          const marcas: Array<{ from: number; to: number }> = [];
-          for (let c = no.node.firstChild; c; c = c.nextSibling) {
-            if (c.name === 'LinkMark' || c.name === 'URL' || c.name === 'LinkTitle') marcas.push({ from: c.from, to: c.to });
+        if (name === 'Link') {
+          out.push(mark('cm-link').range(n.from, n.to));
+          if (onActiveLine(n.from)) return;
+          // [text](url): the `[` disappears, and everything from `](` to `)`
+          const marks: Array<{ from: number; to: number }> = [];
+          for (let c = n.node.firstChild; c; c = c.nextSibling) {
+            if (c.name === 'LinkMark' || c.name === 'URL' || c.name === 'LinkTitle') marks.push({ from: c.from, to: c.to });
           }
-          if (marcas.length >= 2 && doc.sliceString(marcas[0].from, marcas[0].to) === '[') {
-            oculta(marcas[0].from, marcas[0].to);
-            const fecha = marcas.find((m, i) => i > 0 && doc.sliceString(m.from, m.to) === ']');
-            if (fecha && fecha.from < no.to) oculta(fecha.from, no.to);
+          if (marks.length >= 2 && doc.sliceString(marks[0].from, marks[0].to) === '[') {
+            hide(marks[0].from, marks[0].to);
+            const close = marks.find((m, i) => i > 0 && doc.sliceString(m.from, m.to) === ']');
+            if (close && close.from < n.to) hide(close.from, n.to);
           }
           return false;
         }
 
-        if (nome === 'WikiLink') {
-          const bruto = doc.sliceString(no.from, no.to);
-          const embed = bruto.startsWith('!');
-          const miolo = bruto.slice(embed ? 3 : 2, -2);
-          const alvo = miolo.split('|')[0].split('#')[0].trim();
-          const ok = op.existe(alvo);
-          out.push(marca(ok ? 'cm-wikilink' : 'cm-wikilink cm-wikilink-quebrado', { 'data-alvo': alvo }).range(no.from, no.to));
-          if (naAtiva(no.from)) return false;
-          const ini = no.from + (embed ? 3 : 2);
-          const barra = miolo.indexOf('|');
-          // `[[alvo|apelido]]`: mostra só o apelido
-          oculta(no.from, barra >= 0 ? ini + barra + 1 : ini);
-          oculta(no.to - 2, no.to);
+        if (name === 'WikiLink') {
+          const raw = doc.sliceString(n.from, n.to);
+          const embed = raw.startsWith('!');
+          const inner = raw.slice(embed ? 3 : 2, -2);
+          const target = inner.split('|')[0].split('#')[0].trim();
+          const exists = opts.noteExists(target);
+          out.push(mark(exists ? 'cm-wikilink' : 'cm-wikilink cm-wikilink-broken', { 'data-target': target }).range(n.from, n.to));
+          if (onActiveLine(n.from)) return false;
+          const start = n.from + (embed ? 3 : 2);
+          const pipe = inner.indexOf('|');
+          // `[[target|alias]]`: show only the alias
+          hide(n.from, pipe >= 0 ? start + pipe + 1 : start);
+          hide(n.to - 2, n.to);
           return false;
         }
         return undefined;
@@ -250,40 +250,40 @@ function constroi(view: EditorView, op: OpcoesPreview): Construcao {
     });
   }
 
-  return { todas: Decoration.set(out, true), ocultas: Decoration.set(sumiu, true) };
+  return { all: Decoration.set(out, true), hidden: Decoration.set(gone, true) };
 }
 
-export function livePreview(op: OpcoesPreview) {
+export function livePreview(opts: LivePreviewOptions) {
   return ViewPlugin.fromClass(class {
     decorations: DecorationSet;
-    ocultas: DecorationSet;
+    hidden: DecorationSet;
     constructor(view: EditorView) {
-      const c = constroi(view, op);
-      this.decorations = c.todas; this.ocultas = c.ocultas;
+      const b = build(view, opts);
+      this.decorations = b.all; this.hidden = b.hidden;
     }
     update(u: ViewUpdate): void {
-      const pediu = u.transactions.some((tr) => tr.effects.some((e) => e.is(redesenha)));
-      if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || pediu
+      const requested = u.transactions.some((tr) => tr.effects.some((e) => e.is(redraw)));
+      if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || requested
           || syntaxTree(u.startState) !== syntaxTree(u.state)) {
-        const c = constroi(u.view, op);
-        this.decorations = c.todas; this.ocultas = c.ocultas;
+        const b = build(u.view, opts);
+        this.decorations = b.all; this.hidden = b.hidden;
       }
     }
   }, {
     decorations: (v) => v.decorations,
-    // Sintaxe escondida vira faixa atômica: sem isto o cursor "entra" num
-    // `**` invisível e parece travar por uma tecla.
-    provide: (p) => EditorView.atomicRanges.of((view) => view.plugin(p)?.ocultas ?? Decoration.none),
+    // Hidden syntax becomes an atomic range: without this the cursor "enters" an
+    // invisible `**` and seems to get stuck for one keystroke.
+    provide: (p) => EditorView.atomicRanges.of((view) => view.plugin(p)?.hidden ?? Decoration.none),
   });
 }
 
 // ── #tags ──────────────────────────────────────────────────────────────────
-// Não é nó da gramática (o CommonMark não tem tag), então vai por regex.
-// Mesma regra de markdown.ts: precisa de ao menos uma letra.
+// Not a grammar node (CommonMark has no tags), so it goes through a regex.
+// Same rule as markdown.ts: it needs at least one letter.
 
 const tagDeco = new MatchDecorator({
   regexp: /(?<=^|[\s(])#(?=[\p{L}\p{N}_\-/]*[\p{L}_\-/])[\p{L}\p{N}_\-/]+/gu,
-  decoration: (m) => marca('cm-tag', { 'data-tag': m[0].slice(1) }),
+  decoration: (m) => mark('cm-tag', { 'data-tag': m[0].slice(1) }),
 });
 
 export const tags = ViewPlugin.fromClass(class {

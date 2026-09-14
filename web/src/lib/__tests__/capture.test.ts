@@ -1,133 +1,133 @@
 import { describe, it, expect } from 'vitest';
-import { analisa, analisaPrazo, achaProjeto } from '../capture';
+import { parseCapture, parseDue, findProject } from '../capture';
 import type { Project } from '../types';
 
 const proj = (id: number, name: string, code: string | null): Project => ({
   id, name, code, color: null, archived_at: null, created_at: '2026-01-01T00:00:00Z',
 });
-const PROJETOS = [
+const PROJECTS = [
   proj(1, 'Flyback rev C', 'CF03B04'),
   proj(2, 'NACQ', 'NACQ'),
-  proj(3, 'Cotações', null),
+  proj(3, 'Quotes', null),
 ];
-// 2026-09-08 é uma terça
-const TERCA = new Date(2026, 8, 8, 10, 0, 0);
-const dia = (iso: string | null) => (iso ? new Date(iso).toDateString() : null);
+// 2026-09-08 is a Tuesday
+const TUESDAY = new Date(2026, 8, 8, 10, 0, 0);
+const day = (iso: string | null) => (iso ? new Date(iso).toDateString() : null);
 
-describe('projeto por prefixo', () => {
-  it('casa pelo código', () => {
-    expect(achaProjeto('cf03', PROJETOS)?.id).toBe(1);
+describe('project by prefix', () => {
+  it('matches by code', () => {
+    expect(findProject('cf03', PROJECTS)?.id).toBe(1);
   });
-  it('casa pelo nome quando não há código', () => {
-    expect(achaProjeto('cota', PROJETOS)?.id).toBe(3);
+  it('matches by name when there is no code', () => {
+    expect(findProject('quot', PROJECTS)?.id).toBe(3);
   });
-  // Regra invertida de propósito. Antes, prefixo ambíguo devolvia null: a
-  // tarefa nascia órfã e o aviso era um risco num chip de 10px. Agora o `#`
-  // abre uma lista onde as duas opções aparecem, e esta função virou o
-  // fallback de quem submeteu sem olhar — aí o melhor palpite vale mais que
-  // a omissão silenciosa.
-  it('prefixo ambíguo devolve o melhor casamento, não null', () => {
-    const ambiguos = [proj(1, 'Alfa', 'AA1'), proj(2, 'Alfa 2', 'AA2')];
-    expect(achaProjeto('aa', ambiguos)?.id).toBe(1);
-    expect(achaProjeto('aa2', ambiguos)?.id).toBe(2);
+  // Rule inverted on purpose. An ambiguous prefix used to return null: the
+  // task was born orphaned and the warning was a strikethrough on a 10px chip.
+  // Now `#` opens a list where both options show up, and this function became
+  // the fallback for someone who submitted without looking — and then the best
+  // guess is worth more than a silent omission.
+  it('ambiguous prefix returns the best match, not null', () => {
+    const ambiguous = [proj(1, 'Alpha', 'AA1'), proj(2, 'Alpha 2', 'AA2')];
+    expect(findProject('aa', ambiguous)?.id).toBe(1);
+    expect(findProject('aa2', ambiguous)?.id).toBe(2);
   });
-  it('sem match devolve null em vez de estourar', () => {
-    expect(achaProjeto('zzz', PROJETOS)).toBeNull();
+  it('no match returns null instead of blowing up', () => {
+    expect(findProject('zzz', PROJECTS)).toBeNull();
   });
 });
 
-describe('tipo por token @', () => {
-  it('padrão é trabalho', () => {
-    expect(analisa('medir ripple', PROJETOS, TERCA).kind).toBe('trabalho');
+describe('type by @ token', () => {
+  it('default is work', () => {
+    expect(parseCapture('measure ripple', PROJECTS, TUESDAY).kind).toBe('work');
   });
-  it('@reuniao e @r marcam reunião', () => {
-    expect(analisa('daily @reuniao', PROJETOS, TERCA).kind).toBe('reuniao');
-    expect(analisa('daily @r', PROJETOS, TERCA).kind).toBe('reuniao');
+  it('@meeting and @m mark a meeting', () => {
+    expect(parseCapture('daily @meeting', PROJECTS, TUESDAY).kind).toBe('meeting');
+    expect(parseCapture('daily @m', PROJECTS, TUESDAY).kind).toBe('meeting');
   });
-  it('@admin marca admin e some do título', () => {
-    const a = analisa('organizar datasheets @admin', PROJETOS, TERCA);
+  it('@admin marks admin and drops out of the title', () => {
+    const a = parseCapture('organize datasheets @admin', PROJECTS, TUESDAY);
     expect(a.kind).toBe('admin');
-    expect(a.titulo).toBe('organizar datasheets');
+    expect(a.title).toBe('organize datasheets');
   });
-  it('@ desconhecido vira texto, sem erro', () => {
-    const a = analisa('falar com @joao', PROJETOS, TERCA);
-    expect(a.kind).toBe('trabalho');
-    expect(a.titulo).toBe('falar com @joao');
+  it('unknown @ becomes text, no error', () => {
+    const a = parseCapture('talk to @john', PROJECTS, TUESDAY);
+    expect(a.kind).toBe('work');
+    expect(a.title).toBe('talk to @john');
   });
 });
 
-describe('prazo', () => {
-  it('hoje e amanhã', () => {
-    expect(dia(analisaPrazo('hoje', TERCA))).toBe(new Date(2026, 8, 8).toDateString());
-    expect(dia(analisaPrazo('amanha', TERCA))).toBe(new Date(2026, 8, 9).toDateString());
+describe('due', () => {
+  it('today and tomorrow', () => {
+    expect(day(parseDue('today', TUESDAY))).toBe(new Date(2026, 8, 8).toDateString());
+    expect(day(parseDue('tomorrow', TUESDAY))).toBe(new Date(2026, 8, 9).toDateString());
   });
-  it('dia da semana aponta para o PRÓXIMO, nunca hoje', () => {
-    // "ter" numa terça significa a terça que vem
-    expect(dia(analisaPrazo('ter', TERCA))).toBe(new Date(2026, 8, 15).toDateString());
-    expect(dia(analisaPrazo('sex', TERCA))).toBe(new Date(2026, 8, 11).toDateString());
+  it('a weekday points to the NEXT one, never today', () => {
+    // "tue" on a Tuesday means next Tuesday
+    expect(day(parseDue('tue', TUESDAY))).toBe(new Date(2026, 8, 15).toDateString());
+    expect(day(parseDue('fri', TUESDAY))).toBe(new Date(2026, 8, 11).toDateString());
   });
   it('+Nd', () => {
-    expect(dia(analisaPrazo('+3d', TERCA))).toBe(new Date(2026, 8, 11).toDateString());
-    expect(dia(analisaPrazo('+10', TERCA))).toBe(new Date(2026, 8, 18).toDateString());
+    expect(day(parseDue('+3d', TUESDAY))).toBe(new Date(2026, 8, 11).toDateString());
+    expect(day(parseDue('+10', TUESDAY))).toBe(new Date(2026, 8, 18).toDateString());
   });
   it('dd/mm', () => {
-    expect(dia(analisaPrazo('22/09', TERCA))).toBe(new Date(2026, 8, 22).toDateString());
+    expect(day(parseDue('22/09', TUESDAY))).toBe(new Date(2026, 8, 22).toDateString());
   });
-  it('data já passada sem ano vai para o ano seguinte', () => {
-    expect(dia(analisaPrazo('05/03', TERCA))).toBe(new Date(2027, 2, 5).toDateString());
+  it('a past date without a year goes to the next year', () => {
+    expect(day(parseDue('05/03', TUESDAY))).toBe(new Date(2027, 2, 5).toDateString());
   });
-  it('data impossível é recusada em vez de rolar para o mês seguinte', () => {
-    expect(analisaPrazo('31/02', TERCA)).toBeNull();
+  it('an impossible date is rejected instead of rolling into the next month', () => {
+    expect(parseDue('31/02', TUESDAY)).toBeNull();
   });
-  it('lixo devolve null', () => {
-    expect(analisaPrazo('quinta-feira-que-vem', TERCA)).toBeNull();
+  it('garbage returns null', () => {
+    expect(parseDue('thursday-after-next', TUESDAY)).toBeNull();
   });
-  it('guarda meio-dia local — prazo é dia, não instante', () => {
-    expect(new Date(analisaPrazo('hoje', TERCA)!).getHours()).toBe(12);
+  it('stores local noon — a due date is a day, not an instant', () => {
+    expect(new Date(parseDue('today', TUESDAY)!).getHours()).toBe(12);
   });
 });
 
-describe('linha completa', () => {
-  it('extrai título, projeto e prazo', () => {
-    const a = analisa('medir ripple no barramento 400 V #cf03 !qui', PROJETOS, TERCA);
-    expect(a.titulo).toBe('medir ripple no barramento 400 V');
-    expect(a.projeto?.id).toBe(1);
-    expect(dia(a.prazo)).toBe(new Date(2026, 8, 10).toDateString());
+describe('full line', () => {
+  it('extracts title, project and due', () => {
+    const a = parseCapture('measure ripple on the 400 V bus #cf03 !thu', PROJECTS, TUESDAY);
+    expect(a.title).toBe('measure ripple on the 400 V bus');
+    expect(a.project?.id).toBe(1);
+    expect(day(a.due)).toBe(new Date(2026, 8, 10).toDateString());
   });
 
-  it('tokens no meio da frase também valem', () => {
-    const a = analisa('#nacq fechar BOM !sex rev C', PROJETOS, TERCA);
-    expect(a.titulo).toBe('fechar BOM rev C');
-    expect(a.projeto?.id).toBe(2);
+  it('tokens in the middle of the sentence count too', () => {
+    const a = parseCapture('#nacq close BOM !fri rev C', PROJECTS, TUESDAY);
+    expect(a.title).toBe('close BOM rev C');
+    expect(a.project?.id).toBe(2);
   });
 
-  it('NUNCA falha: token que não casa vira texto comum', () => {
-    const a = analisa('conferir #inexistente e !nadaissoaqui', PROJETOS, TERCA);
-    // a tarefa continua sendo criada, com o texto inteiro preservado
-    expect(a.titulo).toBe('conferir #inexistente e !nadaissoaqui');
-    expect(a.projeto).toBeNull();
-    expect(a.prazo).toBeNull();
-    expect(a.ignorados).toEqual(['#inexistente', '!nadaissoaqui']);
+  it('NEVER fails: a token that does not match becomes plain text', () => {
+    const a = parseCapture('check #nonexistent and !nothinglikethis', PROJECTS, TUESDAY);
+    // the task is still created, with the whole text preserved
+    expect(a.title).toBe('check #nonexistent and !nothinglikethis');
+    expect(a.project).toBeNull();
+    expect(a.due).toBeNull();
+    expect(a.ignored).toEqual(['#nonexistent', '!nothinglikethis']);
   });
 
-  it('linha sem token nenhum é tarefa válida', () => {
-    const a = analisa('pedir amostra do driver isolado', PROJETOS, TERCA);
-    expect(a.titulo).toBe('pedir amostra do driver isolado');
-    expect(a.ignorados).toEqual([]);
+  it('a line with no tokens at all is a valid task', () => {
+    const a = parseCapture('request a sample of the isolated driver', PROJECTS, TUESDAY);
+    expect(a.title).toBe('request a sample of the isolated driver');
+    expect(a.ignored).toEqual([]);
   });
 
-  it('só o primeiro token de cada tipo conta', () => {
-    const a = analisa('teste #cf03 #nacq', PROJETOS, TERCA);
-    expect(a.projeto?.id).toBe(1);
-    expect(a.titulo).toBe('teste #nacq');   // o segundo vira texto
+  it('only the first token of each type counts', () => {
+    const a = parseCapture('test #cf03 #nacq', PROJECTS, TUESDAY);
+    expect(a.project?.id).toBe(1);
+    expect(a.title).toBe('test #nacq');   // the second one becomes text
   });
 
-  it('# solto não é token', () => {
-    expect(analisa('usar # como comentário', PROJETOS, TERCA).titulo)
-      .toBe('usar # como comentário');
+  it('a lone # is not a token', () => {
+    expect(parseCapture('use # as a comment', PROJECTS, TUESDAY).title)
+      .toBe('use # as a comment');
   });
 
-  it('espaços extras não viram título torto', () => {
-    expect(analisa('   revisar    eBOM   #nacq  ', PROJETOS, TERCA).titulo).toBe('revisar eBOM');
+  it('extra spaces do not make a crooked title', () => {
+    expect(parseCapture('   review    eBOM   #nacq  ', PROJECTS, TUESDAY).title).toBe('review eBOM');
   });
 });

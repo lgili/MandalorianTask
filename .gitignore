@@ -7,16 +7,16 @@ dist/
 web/dist/
 src-tauri/target/
 src-tauri/gen/
-# icons/ NÃO entra aqui: são gerados uma vez por `pnpm tauri icon` e o
-# generate_context! exige que existam em build time — inclusive no CI.
+# icons/ is NOT ignored: they are generated once by `pnpm tauri icon` and
+# generate_context! requires them to exist at build time — CI included.
 
-# local data — o banco do app nunca vai pro git
+# local data — the app's database never goes into git
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
 
-# segredos: tokens do Google ficam no appdata, mas nunca arrisque
+# secrets: Google tokens live in appdata, but never take the risk
 google.json
 *.local
 .env
@@ -32,5 +32,5 @@ desktop.ini
 !.vscode/extensions.json
 .idea/
 
-# config local do preview
+# local preview config
 .claude/

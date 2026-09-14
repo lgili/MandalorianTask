@@ -1,37 +1,37 @@
 # Bancada
 
-Registro de trabalho local-first: onde as horas foram, quais reuniões vieram da agenda,
-e as notas de trabalho num vault markdown.
+A local-first work log: where the hours went, which meetings came from the calendar,
+and your work notes in a markdown vault.
 
-**Não é um app de produtividade — é um instrumento de medição.** Você não rastreia o tempo,
-você confirma o dia que o app já montou.
+**It is not a productivity app — it is a measuring instrument.** You don't track time,
+you confirm the day the app has already put together.
 
-## Estado
+## Status
 
-`v0.3` — Projetos, captura unificada, Quadro (kanban), Hoje (timeline), relatório da semana,
-e **Notas**: um vault de markdown compatível com o Obsidian, com `[[links]]`, backlinks e busca.
-Google Agenda segue para a v0.2.
+`v0.3` — Projects, unified capture, Board (kanban), Today (timeline), weekly report,
+and **Notes**: an Obsidian-compatible markdown vault, with `[[links]]`, backlinks and search.
+Google Calendar is still slated for v0.2.
 
-## Como se registra
+## How tasks get added
 
-Uma superfície de criação só, chamável de qualquer tela com **`n`**. Na linha:
+A single creation surface, callable from any screen with **`n`**. In the line:
 
-| token | faz |
+| token | does |
 |---|---|
-| `#` | abre a lista de projetos — e a última linha dela **cria** o projeto que você digitou |
-| `!` | prazo: `hoje` · `qui` · `12/09` · `+3d` |
-| `@` | tipo: `reuniao` · `admin` |
+| `#` | opens the project list — and its last row **creates** the project you typed |
+| `!` | due: `today` · `thu` · `12/09` · `+3d` |
+| `@` | type: `meeting` · `admin` |
 
-`enter` grava · `ctrl+enter` grava e manda pra fila. Dentro de um projeto, estar na tela
-**já é** a atribuição — a linha de captura nasce vinculada a ele.
+`enter` adds · `ctrl+enter` adds and sends to the queue. Inside a project, being on its screen
+**is** the assignment — the capture line starts out linked to it.
 
-Projeto novo pede só o nome. A cor sai sozinha da paleta (a menos usada entre os ativos),
-porque perguntar cor no meio de uma reunião é a fricção que deixa o campo vazio para sempre.
+A new project asks only for the name. The color is picked automatically from the palette (the least used among active projects),
+because asking for a color in the middle of a meeting is the friction that leaves the field empty forever.
 
-## Rodar
+## Running
 
-Pré-requisitos: Node 20+, pnpm 9+, Rust estável (`rustup`), e as dependências nativas do Tauri 2
-(Windows: WebView2 + Build Tools do VS; macOS: Xcode CLT).
+Prerequisites: Node 20+, pnpm 9+, stable Rust (`rustup`), and Tauri 2's native dependencies
+(Windows: WebView2 + VS Build Tools; macOS: Xcode CLT).
 
 ```bash
 pnpm install
@@ -45,88 +45,88 @@ pnpm install
 .\scripts\dev.ps1
 ```
 
-## Build nativo
+## Native build
 
 ```bash
-pnpm tauri icon app-icon.png   # uma vez, gera src-tauri/icons/
+pnpm tauri icon app-icon.png   # once, generates src-tauri/icons/
 pnpm build                     # macOS: .app + .dmg   |   Windows: -setup.exe (NSIS)
 ```
 
-CI: uma tag `v*` dispara `.github/workflows/build.yml`, que monta macOS e Windows e anexa
-os instaladores ao Release.
+CI: a `v*` tag triggers `.github/workflows/build.yml`, which builds macOS and Windows and attaches
+the installers to the Release.
 
-## Notas
+## Notes
 
-Um vault é uma pasta de arquivos `.md` — a mesma que o Obsidian abre. **O arquivo é a verdade**:
-o SQLite guarda só um índice (tabelas `notes`, `notes_fts`, `note_links`) que dá para apagar e
-refazer. Nada do que o app mostra sobre uma nota vem de outro lugar que não o próprio arquivo.
+A vault is a folder of `.md` files — the same one Obsidian opens. **The file is the source of truth**:
+SQLite keeps only an index (tables `notes`, `notes_fts`, `note_links`) that can be deleted and
+rebuilt. Nothing the app shows about a note comes from anywhere but the file itself.
 
-| no editor | faz |
+| in the editor | does |
 |---|---|
-| `[[` | lista as notas; o link pode apontar para nota que ainda não existe — clicar cria |
-| `#tag` | vira pílula; clicar busca a tag |
-| `- [ ]` | vira caixa clicável |
-| `projeto: CÓDIGO` no frontmatter | liga a nota ao projeto — ela aparece na tela dele |
+| `[[` | lists the notes; the link can point to a note that doesn't exist yet — clicking creates it |
+| `#tag` | becomes a pill; clicking searches for the tag |
+| `- [ ]` | becomes a clickable checkbox |
+| `project: CODE` in the frontmatter | links the note to the project — it shows up on that project's screen (the legacy key `projeto:`, written by older versions, is still read) |
 
-**Ctrl+K** busca em notas, projetos e tarefas ao mesmo tempo. **Ctrl+P** lista os comandos.
+**Ctrl+K** searches notes, projects and tasks at once. **Ctrl+P** lists the commands.
 
-O editor é CodeMirror 6 em modo *live preview*: a sintaxe some fora da linha do cursor, mas o
-texto no disco nunca é reescrito para exibir. Renomear uma nota reescreve os `[[links]]` que
-apontavam para ela. Apagar move para `.trash/` dentro do vault, como o Obsidian.
+The editor is CodeMirror 6 in *live preview* mode: the syntax disappears outside the cursor's line, but the
+text on disk is never rewritten for display. Renaming a note rewrites the `[[links]]` that
+pointed to it. Deleting moves it to `.trash/` inside the vault, like Obsidian does.
 
 ## Plugins
 
-Pastas em `<vault>/.bancada/plugins/<id>/` com `manifest.json` e `main.js`, como no Obsidian.
-Um plugin registra comandos (Ctrl+P), painéis, extensões de editor e estilos, e escuta eventos —
-inclusive os de **tempo** (`sessao:iniciada`, `sessao:encerrada`), que nenhum app de notas tem.
+Folders in `<vault>/.bancada/plugins/<id>/` with `manifest.json` and `main.js`, as in Obsidian.
+A plugin registers commands (Ctrl+P), panels, editor extensions and styles, and listens to events —
+including **time** events (`session:started`, `session:stopped`), which no notes app has.
 
-Três vêm com o app e usam só a API pública, a mesma de um terceiro:
+Three ship with the app and use only the public API, the same one a third party gets:
 
-| plugin | faz |
+| plugin | does |
 |---|---|
-| **Nota do dia** | abre `Diário/AAAA-MM-DD.md`, já com as sessões que o quadro mediu hoje |
-| **Tarefas da nota** | as caixas `- [ ]` da nota aberta viram tarefas no projeto dela, sem duplicar |
-| **Grafo** | todas as notas e links, colorido por projeto; link para nota inexistente vira nó fantasma |
+| **Daily note** | opens `Daily/YYYY-MM-DD.md`, pre-filled with the sessions the board measured today |
+| **Note tasks** | the open note's `- [ ]` checkboxes become tasks in the note's project, without duplicates |
+| **Graph** | every note and link, colored by project; a link to a missing note becomes a ghost node |
 
-Plugins da comunidade começam em **modo restrito**, e a confiança é por vault, gravada no app —
-um vault clonado de alguém nunca chega com plugin ligado. Guia completo para quem escreve plugin:
-**[docs/PLUGINS.md](docs/PLUGINS.md)**. Exemplo pronto: [`exemplos/plugins/destaca-todo/`](exemplos/plugins/destaca-todo/).
+Community plugins start in **restricted mode**, and trust is per vault, stored in the app —
+a vault cloned from someone else never arrives with a plugin enabled. Full guide for plugin authors:
+**[docs/PLUGINS.md](docs/PLUGINS.md)**. Ready-made example: [`examples/plugins/highlight-todo/`](examples/plugins/highlight-todo/).
 
-## Onde os dados moram
+## Where the data lives
 
-| O quê | Onde |
+| What | Where |
 |---|---|
-| Banco | `%APPDATA%\com.lgili.bancada\bancada.db` · `~/Library/Application Support/com.lgili.bancada/bancada.db` |
-| Notas | a pasta que você escolher — pode ser o vault do Obsidian. O caminho fica em `meta.vault_path` |
-| Token do Google (v0.2) | arquivo `0600` no mesmo appdata — nunca em `localStorage` |
+| Database | `%APPDATA%\com.lgili.bancada\bancada.db` · `~/Library/Application Support/com.lgili.bancada/bancada.db` |
+| Notes | the folder you choose — it can be your Obsidian vault. The path is kept in `meta.vault_path` |
+| Google token (v0.2) | a `0600` file in the same appdata — never in `localStorage` |
 
-O banco é um arquivo. Backup é copiar o arquivo.
+The database is a file. Backup is copying the file.
 
-## Convenções
+## Conventions
 
-- **Nenhum componente escreve SQL.** Tudo passa por `src/lib/db.ts`, que é a única camada
-  que fala com o banco — o mesmo papel que `lib/api.ts` tem no eBOM generator.
-- **Nenhum componente toca arquivo.** Tudo passa por `src/lib/vault.ts`; e quem escreve nota
-  passa por `src/lib/notas.ts`, que mantém disco, índice e evento andando juntos. Em
-  `dev:mock` os dois (`db` e `vault`) viram versões em memória pelo mesmo alias do Vite.
-- **`web/src/lib/plugins/tipos.ts` é contrato público.** Não importa nada de dentro do app e
-  expõe DTOs próprios. Mudar algo lá que quebre plugin exige subir o número principal de
-  `VERSAO_API`. Os plugins de núcleo só podem usar o que está nele — se a API não bastar para
-  eles, não basta para ninguém.
-- **Nenhum componente faz regex sobre markdown.** Frontmatter, título, links e tags saem de
-  `src/lib/markdown.ts`, que é testado — inclusive contra link dentro de bloco de código.
-- **Nenhum componente faz aritmética de data.** Tudo passa por `src/lib/tempo.ts`, que é
-  testado. Fuso, virada de dia e sobreposição são onde os bugs mentem em silêncio.
-- Timestamps gravados em **UTC ISO-8601**; a fronteira do dia é calculada no fuso local.
-- Rotas em `routes/`, tudo o mais em `components/`. Um arquivo de rota que passa de ~300
-  linhas quer dizer que faltou extrair componente.
-- **Nenhuma tela cria tarefa por conta própria.** Tudo passa por `components/CapturaLinha.vue`.
-  Existiam quatro superfícies de criação com gramáticas diferentes — o botão mais destacado
-  do app não criava nada, e o campo do Quadro fabricava tarefa órfã.
-- **Tamanho de fonte vem da escala**, os oito degraus em `style.css` (`--t-micro` a `--t-tela`).
-  Havia 22 tamanhos, doze deles entre 9 e 15px: passo de 0,5px não é visível nem renderizável.
-- **`projects.color` guarda o token `p1`..`p6`**, não hex — a cor tem que virar com o tema.
-  (O comentário da migration v1 diz "hex sem '#'"; está errado desde o primeiro dia e a
-  migration não pode ser editada.)
-- **Só existe barra de progresso se der para dizer o denominador em voz alta.** Se não der,
-  é número, não gráfico.
+- **No component writes SQL.** Everything goes through `src/lib/db.ts`, the only layer
+  that talks to the database — the same role `lib/api.ts` plays in the eBOM generator.
+- **No component touches files.** Everything goes through `src/lib/vault.ts`; and anything that writes a note
+  goes through `src/lib/notes.ts`, which keeps disk, index and events moving together. In
+  `dev:mock` both (`db` and `vault`) become in-memory versions through the same Vite alias.
+- **`web/src/lib/plugins/types.ts` is a public contract.** It imports nothing from inside the app and
+  exposes its own DTOs. Changing anything there that breaks plugins requires bumping the major number of
+  `API_VERSION`. Core plugins may only use what is in it — if the API isn't enough for
+  them, it isn't enough for anyone.
+- **No component runs regex over markdown.** Frontmatter, title, links and tags come from
+  `src/lib/markdown.ts`, which is tested — including against a link inside a code block.
+- **No component does date arithmetic.** Everything goes through `src/lib/time.ts`, which is
+  tested. Time zones, day rollover and overlaps are where bugs lie silently.
+- Timestamps are stored in **UTC ISO-8601**; the day boundary is computed in the local time zone.
+- Routes in `routes/`, everything else in `components/`. A route file past ~300
+  lines means a component should have been extracted.
+- **No screen creates a task on its own.** Everything goes through `components/CaptureLine.vue`.
+  There used to be four creation surfaces with different grammars — the most prominent button
+  in the app created nothing, and the Board's field produced orphan tasks.
+- **Font size comes from the scale**, the eight steps in `style.css` (`--t-micro` to `--t-display`).
+  There were 22 sizes, twelve of them between 9 and 15px: a 0.5px step is neither visible nor renderable.
+- **`projects.color` stores the token `p1`..`p6`**, not hex — the color has to change with the theme.
+  (The v1 migration comment says "hex without '#'"; it has been wrong since day one and the
+  migration cannot be edited.)
+- **A progress bar only exists if you can say the denominator out loud.** If you can't,
+  it's a number, not a chart.

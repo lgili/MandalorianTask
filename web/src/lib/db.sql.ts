@@ -1,14 +1,14 @@
-// A ÚNICA camada que fala SQL. Nenhum componente escreve query; eles chamam
-// as funções daqui. Mesmo papel que lib/api.ts tem no eBOM generator.
+// The ONLY layer that speaks SQL. No component writes a query; they call the
+// functions in here. Same role lib/api.ts plays in the eBOM generator.
 //
-// O schema é criado pelas migrations em src-tauri/src/migrations.rs.
+// The schema is created by the migrations in src-tauri/src/migrations.rs.
 
 import Database from '@tauri-apps/plugin-sql';
 import type {
-  NotaIndice, NotaResumo, Outcome, Project, ResultadoBusca, Session, SessionCard, Task, TaskCard,
-  TaskKind, TaskStatus, Totais, Transition,
+  NoteIndexEntry, NoteSummary, Outcome, Project, SearchResult, Session, SessionCard, Task, TaskCard,
+  TaskKind, TaskStatus, Totals, Transition,
 } from './types';
-import { agoraIso, dayRangeUtc, tzAtual, type DayKey } from './time';
+import { nowIso, dayRangeUtc, currentTz, type DayKey } from './time';
 
 let _db: Database | null = null;
 
@@ -17,61 +17,71 @@ export async function db(): Promise<Database> {
   return _db;
 }
 
-/** Erro do banco em mensagem que dá para mostrar. */
-export function dbErro(e: unknown): string {
+/** A database error turned into a message fit to show. */
+export function dbError(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e);
-  if (m.includes('idx_uma_sessao_aberta')) {
-    return 'Já existe uma tarefa rodando. Pare ela antes de começar outra.';
+  // SQLite names the COLUMN in this message, not the unique index
+  // (`UNIQUE constraint failed: sessions.is_open`). The index name is checked
+  // too, in case a driver ever reports it instead.
+  if (m.includes('sessions.is_open') || m.includes('idx_one_open_session')) {
+    return 'A task is already running. Stop it before starting another.';
   }
   if (m.includes('UNIQUE constraint failed: projects.name')) {
-    return 'Já existe um projeto com esse nome.';
+    return 'A project with that name already exists.';
   }
   if (m.includes('FOREIGN KEY constraint failed')) {
-    return 'Referência inválida — o projeto ou a tarefa não existe mais.';
+    return 'Invalid reference — the project or task no longer exists.';
+  }
+  // SQLite quotes the failing expression, so the session-time CHECK can be
+  // told apart from the value CHECKs (status, kind, outcome, source) — which a
+  // community plugin can hit by passing a status the app doesn't know.
+  if (m.includes('CHECK constraint failed') && m.includes('ended_at')) {
+    return 'Invalid time: the end must be after the start.';
   }
   if (m.includes('CHECK constraint failed')) {
-    return 'Horário inválido: o fim precisa ser depois do início.';
+    return 'Invalid value — the status, kind or outcome is not one the app knows.';
   }
   return m;
 }
 
-// ──────────────────────────────── projetos ────────────────────────────────
+// ──────────────────────────────── projects ────────────────────────────────
 
-export async function listProjects(incluirArquivados = false): Promise<Project[]> {
+export async function listProjects(includeArchived = false): Promise<Project[]> {
   const d = await db();
   return d.select<Project[]>(
-    `SELECT * FROM projects ${incluirArquivados ? '' : 'WHERE archived_at IS NULL'}
+    `SELECT * FROM projects ${includeArchived ? '' : 'WHERE archived_at IS NULL'}
       ORDER BY name COLLATE NOCASE`,
   );
 }
 
 /**
- * Paleta fechada de cor de projeto.
+ * Closed palette of project colors.
  *
- * A coluna guarda o NOME do token ('p1'..'p6'), não um hex: a cor precisa
- * mudar junto com o tema, e só o CSS sabe fazer isso. (A migration v1 chama a
- * coluna de "hex sem '#'" — o comentário está errado desde o primeiro dia; o
- * front sempre leu var(--pN). Não dá para editar a migration, então a verdade
- * mora aqui.)
+ * The column stores the token NAME ('p1'..'p6'), not a hex: the color has to
+ * change along with the theme, and only CSS knows how to do that. (Migration v1
+ * calls the column "hex without '#'" — that comment has been wrong since day
+ * one; the front end always read var(--pN). The migration can't be edited, so
+ * the truth lives here.)
  */
-export const PALETA = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
-export type Cor = typeof PALETA[number];
+export const PROJECT_COLORS = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
+export type ProjectColor = typeof PROJECT_COLORS[number];
 
 /**
- * A cor menos usada entre os projetos vivos.
+ * The least-used color among live projects.
  *
- * Ninguém escolhe cor ao criar um projeto. Perguntar isso no meio de uma
- * reunião é a fricção que faz o campo ficar vazio para sempre — e cor vazia
- * era o motivo de TODO projeto real nascer cinza enquanto o mock era colorido.
+ * Nobody picks a color when creating a project. Asking that in the middle of a
+ * meeting is the friction that leaves the field empty forever — and an empty
+ * color was the reason EVERY real project was born grey while the mock was
+ * colorful.
  */
-export async function proximaCor(): Promise<Cor> {
+export async function pickNextColor(): Promise<ProjectColor> {
   const d = await db();
   const rows = await d.select<Array<{ color: string; n: number }>>(
     `SELECT color, COUNT(*) AS n FROM projects
       WHERE archived_at IS NULL AND color IS NOT NULL GROUP BY color`,
   );
-  const uso = new Map(rows.map((r) => [r.color, r.n]));
-  return PALETA.reduce((a, b) => ((uso.get(a) ?? 0) <= (uso.get(b) ?? 0) ? a : b));
+  const usage = new Map(rows.map((r) => [r.color, r.n]));
+  return PROJECT_COLORS.reduce((a, b) => ((usage.get(a) ?? 0) <= (usage.get(b) ?? 0) ? a : b));
 }
 
 export async function createProject(
@@ -80,7 +90,7 @@ export async function createProject(
   const d = await db();
   const r = await d.execute(
     `INSERT INTO projects (name, code, color, created_at) VALUES ($1,$2,$3,$4)`,
-    [name.trim(), code?.trim() || null, color ?? await proximaCor(), agoraIso()],
+    [name.trim(), code?.trim() || null, color ?? await pickNextColor(), nowIso()],
   );
   return r.lastInsertId as number;
 }
@@ -92,9 +102,9 @@ export async function updateProject(
 }
 
 /**
- * Apaga o projeto. As tarefas SOBREVIVEM e voltam para a Caixa — é o
- * ON DELETE SET NULL da migration v1. Apagar projeto nunca pode apagar
- * trabalho medido junto.
+ * Deletes the project. Its tasks SURVIVE and go back to the Inbox — that is
+ * the ON DELETE SET NULL from migration v1. Deleting a project must never
+ * take measured work down with it.
  */
 export async function deleteProject(id: number): Promise<void> {
   const d = await db();
@@ -102,66 +112,66 @@ export async function deleteProject(id: number): Promise<void> {
 }
 
 /**
- * Dá cor aos projetos criados antes de a cor existir. Roda na abertura, uma
- * vez por projeto sem cor, e é silencioso: é conserto de dado, não notícia.
+ * Gives a color to projects created before colors existed. Runs at startup,
+ * once per uncolored project, and stays quiet: it is a data fix, not news.
  */
-export async function pintaProjetosSemCor(): Promise<number> {
+export async function backfillProjectColors(): Promise<number> {
   const d = await db();
-  const sem = await d.select<Array<{ id: number }>>(
+  const uncolored = await d.select<Array<{ id: number }>>(
     `SELECT id FROM projects WHERE color IS NULL ORDER BY id`);
-  for (const p of sem) {
-    await d.execute(`UPDATE projects SET color = $1 WHERE id = $2`, [await proximaCor(), p.id]);
+  for (const p of uncolored) {
+    await d.execute(`UPDATE projects SET color = $1 WHERE id = $2`, [await pickNextColor(), p.id]);
   }
-  return sem.length;
+  return uncolored.length;
 }
 
-/** Projeto + o que a lista e o cabeçalho precisam mostrar junto. */
-export interface ProjetoResumo extends Project {
-  abertas: number;
-  fazendo: number;
-  feitas: number;
-  total: number;
-  /** Minutos de sessões fechadas de TODAS as tarefas do projeto. */
-  minutos: number;
-  /** Último sinal de vida: captura de tarefa ou sessão. NULL = projeto vazio. */
-  ultima_at: string | null;
+/** Project + what the list and the header need to show alongside it. */
+export interface ProjectSummary extends Project {
+  open_count: number;
+  doing_count: number;
+  done_count: number;
+  total_count: number;
+  /** Minutes of closed sessions across ALL of the project's tasks. */
+  minutes: number;
+  /** Last sign of life: a task capture or a session. NULL = empty project. */
+  last_activity_at: string | null;
 }
 
 /**
- * A lista de projetos com números.
+ * The project list, with numbers.
  *
- * Ordenada por ATIVIDADE, não por nome: num seletor e numa sidebar, o que foi
- * tocado ontem tem que vir antes do que dorme há três meses. Projeto sem
- * nenhuma atividade vai para o fim, não some.
+ * Sorted by ACTIVITY, not by name: in a picker or a sidebar, what was touched
+ * yesterday has to come before what has been asleep for three months. A
+ * project with no activity at all goes to the end; it doesn't disappear.
  */
-export async function resumoProjetos(incluirArquivados = false): Promise<ProjetoResumo[]> {
+export async function listProjectSummaries(includeArchived = false): Promise<ProjectSummary[]> {
   const d = await db();
-  const rows = await d.select<ProjetoResumo[]>(
+  const rows = await d.select<ProjectSummary[]>(
     `SELECT p.*,
        (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id
-          AND t.archived_at IS NULL AND t.status <> 'feito')                       AS abertas,
+          AND t.archived_at IS NULL AND t.status <> 'done')                        AS open_count,
        (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id
-          AND t.archived_at IS NULL AND t.status = 'fazendo')                      AS fazendo,
+          AND t.archived_at IS NULL AND t.status = 'doing')                        AS doing_count,
        (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id
-          AND t.status = 'feito')                                                  AS feitas,
-       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id)                    AS total,
+          AND t.status = 'done')                                                   AS done_count,
+       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id)                    AS total_count,
        COALESCE((SELECT SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440)
                    FROM sessions s JOIN tasks t ON t.id = s.task_id
-                  WHERE t.project_id = p.id AND s.ended_at IS NOT NULL), 0)        AS minutos,
-       (SELECT MAX(quando) FROM (
-          SELECT MAX(t.created_at) AS quando FROM tasks t WHERE t.project_id = p.id
+                  WHERE t.project_id = p.id AND s.ended_at IS NOT NULL), 0)        AS minutes,
+       (SELECT MAX(at) FROM (
+          SELECT MAX(t.created_at) AS at FROM tasks t WHERE t.project_id = p.id
           UNION ALL
           SELECT MAX(s.started_at) FROM sessions s JOIN tasks t ON t.id = s.task_id
            WHERE t.project_id = p.id
-       ))                                                                          AS ultima_at
+       ))                                                                          AS last_activity_at
      FROM projects p
-     ${incluirArquivados ? '' : 'WHERE p.archived_at IS NULL'}
-     ORDER BY (ultima_at IS NULL), ultima_at DESC, p.name COLLATE NOCASE`,
+     ${includeArchived ? '' : 'WHERE p.archived_at IS NULL'}
+     ORDER BY (last_activity_at IS NULL), last_activity_at DESC, p.name COLLATE NOCASE`,
   );
-  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
+  return rows.map((r) => ({ ...r, minutes: Math.round(r.minutes) }));
 }
 
-// ───────────────────────────────── tarefas ─────────────────────────────────
+// ───────────────────────────────── tasks ─────────────────────────────────
 
 const TASK_SELECT = `
   SELECT t.*,
@@ -170,85 +180,85 @@ const TASK_SELECT = `
          p.color AS project_color,
          COALESCE((SELECT SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440)
                      FROM sessions s
-                    WHERE s.task_id = t.id AND s.ended_at IS NOT NULL), 0) AS minutos,
-         COALESCE((SELECT COUNT(*) FROM sessions s WHERE s.task_id = t.id), 0) AS sessoes,
-         o.title AS origem_title,
-         o.kind  AS origem_kind
+                    WHERE s.task_id = t.id AND s.ended_at IS NOT NULL), 0) AS minutes,
+         COALESCE((SELECT COUNT(*) FROM sessions s WHERE s.task_id = t.id), 0) AS session_count,
+         o.title AS origin_title,
+         o.kind  AS origin_kind
     FROM tasks t
     LEFT JOIN projects p ON p.id = t.project_id
-    LEFT JOIN tasks    o ON o.id = t.origem_id`;
+    LEFT JOIN tasks    o ON o.id = t.origin_id`;
 
-/** Tudo que está no quadro (inclui o backlog). */
+/** Everything on the board (backlog included). */
 export async function boardTasks(): Promise<TaskCard[]> {
   const d = await db();
   const rows = await d.select<TaskCard[]>(
     `${TASK_SELECT} WHERE t.archived_at IS NULL ORDER BY t.pos, t.created_at DESC`,
   );
-  // SUM sobre julianday devolve float; a UI só lida com minutos inteiros.
-  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
+  // SUM over julianday returns a float; the UI only deals in whole minutes.
+  return rows.map((r) => ({ ...r, minutes: Math.round(r.minutes) }));
 }
 
 /**
- * As tarefas de UM projeto — a pergunta que o app inteiro não sabia responder.
- * `projectId === null` devolve a Caixa: o que foi capturado sem projeto.
+ * The tasks of ONE project — the question the whole app couldn't answer.
+ * `projectId === null` returns the Inbox: what was captured without a project.
  *
- * Inclui as arquivadas por padrão, ao contrário do quadro: a tela do projeto é
- * o histórico dele, e esconder o que foi entregue há 20 dias esvazia justamente
- * a parte que responde "esse projeto rendeu?".
+ * Includes archived tasks by default, unlike the board: the project screen is
+ * its history, and hiding what was delivered 20 days ago empties out exactly
+ * the part that answers "did this project pay off?".
  */
-export async function tarefasDoProjeto(
-  projectId: number | null, incluirArquivadas = true,
+export async function listProjectTasks(
+  projectId: number | null, includeArchived = true,
 ): Promise<TaskCard[]> {
   const d = await db();
   const rows = await d.select<TaskCard[]>(
     `${TASK_SELECT}
       WHERE ${projectId == null ? 't.project_id IS NULL' : 't.project_id = $1'}
-        ${incluirArquivadas ? '' : 'AND t.archived_at IS NULL'}
+        ${includeArchived ? '' : 'AND t.archived_at IS NULL'}
       ORDER BY t.pos, t.created_at DESC`,
     projectId == null ? [] : [projectId],
   );
-  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
+  return rows.map((r) => ({ ...r, minutes: Math.round(r.minutes) }));
 }
 
 /**
- * Joga N tarefas num projeto de uma vez. Reclassificar dez tarefas custava dez
- * aberturas de drawer e ~40 cliques; aqui é uma chamada.
+ * Drops N tasks into a project at once. Reclassifying ten tasks used to cost
+ * ten drawer openings and ~40 clicks; here it is one call.
  */
-export async function reatribuiProjeto(ids: number[], projectId: number | null): Promise<void> {
+export async function reassignTasks(ids: number[], projectId: number | null): Promise<void> {
   if (!ids.length) return;
   const d = await db();
-  const marcas = ids.map((_, i) => `$${i + 2}`).join(',');
+  const placeholders = ids.map((_, i) => `$${i + 2}`).join(',');
   await d.execute(
-    `UPDATE tasks SET project_id = $1 WHERE id IN (${marcas})`, [projectId, ...ids],
+    `UPDATE tasks SET project_id = $1 WHERE id IN (${placeholders})`, [projectId, ...ids],
   );
 }
 
 /**
- * Captura rápida. É a operação mais usada do app — durante uma reunião — então
- * só o título é obrigatório. Entra no topo do backlog.
+ * Quick capture. It is the app's most-used operation — during a meeting — so
+ * only the title is required. It goes to the top of the backlog.
  */
-export async function capturaTarefa(
-  title: string, project_id: number | null = null, kind: TaskKind = 'trabalho',
+export async function captureTask(
+  title: string, project_id: number | null = null, kind: TaskKind = 'work',
   due_at: string | null = null,
 ): Promise<number> {
   const d = await db();
-  // Contexto de captura: o que estava rodando neste instante. Ninguém digita isto.
-  const aberta = await d.select<Array<{ task_id: number }>>(
+  // Capture context: whatever was running at this instant. Nobody types this.
+  const openSession = await d.select<Array<{ task_id: number }>>(
     `SELECT task_id FROM sessions WHERE ended_at IS NULL LIMIT 1`);
-  const origem = aberta[0]?.task_id ?? null;
+  const origin = openSession[0]?.task_id ?? null;
   const min = await d.select<Array<{ m: number | null }>>(
     `SELECT MIN(pos) AS m FROM tasks WHERE status = 'backlog' AND archived_at IS NULL`,
   );
-  const pos = (min[0]?.m ?? 0) - 1;   // topo da coluna
-  const agora = agoraIso();
+  const pos = (min[0]?.m ?? 0) - 1;   // top of the column
+  const now = nowIso();
   const r = await d.execute(
-    `INSERT INTO tasks (project_id, title, kind, status, pos, created_at, due_at, origem_id)
+    `INSERT INTO tasks (project_id, title, kind, status, pos, created_at, due_at, origin_id)
      VALUES ($1,$2,$3,'backlog',$4,$5,$6,$7)`,
-    [project_id, title.trim(), kind, pos, agora, due_at, origem],
+    [project_id, title.trim(), kind, pos, now, due_at, origin],
   );
   const id = r.lastInsertId as number;
-  await d.execute(`INSERT INTO transitions (task_id, de, para, at) VALUES ($1,NULL,'backlog',$2)`,
-    [id, agora]);
+  await d.execute(`INSERT INTO transitions (task_id, from_status, to_status, at) VALUES ($1,NULL,'backlog',$2)`,
+    [id, now]);
   return id;
 }
 
@@ -260,114 +270,114 @@ export async function updateTask(
   await patchRow('tasks', id, patch);
 }
 
-/** Concluir com desfecho: move para 'feito' e registra COMO terminou. */
-export async function concluiTarefa(id: number, outcome: Outcome, nota: string | null = null): Promise<void> {
-  await moveTask(id, 'feito');
-  await patchRow('tasks', id, { outcome, outcome_note: nota });
+/** Complete with an outcome: moves to 'done' and records HOW it ended. */
+export async function completeTask(id: number, outcome: Outcome, note: string | null = null): Promise<void> {
+  await moveTask(id, 'done');
+  await patchRow('tasks', id, { outcome, outcome_note: note });
 }
 
-export async function transicoes(taskId: number): Promise<Transition[]> {
+export async function listTransitions(taskId: number): Promise<Transition[]> {
   const d = await db();
   return d.select<Transition[]>(`SELECT * FROM transitions WHERE task_id = $1 ORDER BY at`, [taskId]);
 }
 
-export async function sessoesDaTarefa(taskId: number): Promise<Session[]> {
+export async function listTaskSessions(taskId: number): Promise<Session[]> {
   const d = await db();
   return d.select<Session[]>(`SELECT * FROM sessions WHERE task_id = $1 ORDER BY started_at DESC`, [taskId]);
 }
 
-/** Desfechos no período, para "Como terminaram". */
-export async function desfechos(fromUtc: string, toUtc: string): Promise<Array<{ outcome: Outcome | null; n: number }>> {
+/** Outcomes in the period, for "How they ended". */
+export async function countOutcomes(fromUtc: string, toUtc: string): Promise<Array<{ outcome: Outcome | null; n: number }>> {
   const d = await db();
   return d.select(`SELECT outcome, COUNT(*) AS n FROM tasks
                     WHERE done_at IS NOT NULL AND done_at >= $1 AND done_at < $2
                     GROUP BY outcome ORDER BY n DESC`, [fromUtc, toUtc]);
 }
 
-/** Concluídas por dia (últimos N dias), para a sparkline da sidebar. */
-export async function concluidasPorDia(dias: number): Promise<Array<{ dia: string; n: number }>> {
+/** Completed per day (last N days), for the sidebar sparkline. */
+export async function countCompletedByDay(days: number): Promise<Array<{ day: string; n: number }>> {
   const d = await db();
-  return d.select(`SELECT date(done_at,'localtime') AS dia, COUNT(*) AS n FROM tasks
+  return d.select(`SELECT date(done_at,'localtime') AS day, COUNT(*) AS n FROM tasks
                     WHERE done_at IS NOT NULL AND julianday('now') - julianday(done_at) < $1
-                    GROUP BY dia ORDER BY dia`, [dias]);
+                    GROUP BY day ORDER BY day`, [days]);
 }
 
 export async function deleteTask(id: number): Promise<void> {
   const d = await db();
-  await d.execute(`DELETE FROM tasks WHERE id = $1`, [id]);   // sessões caem junto (CASCADE)
+  await d.execute(`DELETE FROM tasks WHERE id = $1`, [id]);   // sessions go with it (CASCADE)
 }
 
 /**
- * Move a tarefa de coluna — e é ISTO que produz o tempo.
+ * Moves the task to another column — and THIS is what produces time.
  *
- * Entrar em 'fazendo' abre uma sessão; sair fecha. O usuário nunca aperta
- * "iniciar cronômetro": o cronômetro é consequência do quadro.
+ * Entering 'doing' opens a session; leaving closes it. The user never presses
+ * "start timer": the timer is a consequence of the board.
  *
- * A ordem importa: fechamos ANTES de abrir, sempre. Assim, se o app morrer no
- * meio, o pior caso é nenhuma sessão aberta — nunca duas, que seria hora
- * contada em dobro. (O índice único no banco também barraria, mas é melhor
- * não depender disso.)
+ * Order matters: we close BEFORE opening, always. That way, if the app dies
+ * halfway, the worst case is no open session — never two, which would be time
+ * counted twice. (The unique index in the database would block it too, but
+ * it is better not to rely on that.)
  */
-export async function moveTask(id: number, para: TaskStatus): Promise<void> {
+export async function moveTask(id: number, to: TaskStatus): Promise<void> {
   const d = await db();
-  const atual = await d.select<Array<{ status: TaskStatus; started_at: string | null }>>(
+  const current = await d.select<Array<{ status: TaskStatus; started_at: string | null }>>(
     `SELECT status, started_at FROM tasks WHERE id = $1`, [id]);
-  if (!atual.length) return;
-  const de = atual[0].status;
-  if (de === para) return;
-  const agora = agoraIso();
+  if (!current.length) return;
+  const from = current[0].status;
+  if (from === to) return;
+  const now = nowIso();
 
-  // 1. Fecha QUALQUER sessão aberta (desta tarefa ou de outra).
-  await d.execute(`UPDATE sessions SET ended_at = $1 WHERE ended_at IS NULL`, [agora]);
+  // 1. Close ANY open session (this task's or another's).
+  await d.execute(`UPDATE sessions SET ended_at = $1 WHERE ended_at IS NULL`, [now]);
 
-  // 2. Abre uma nova só se estiver entrando em 'fazendo'.
-  if (para === 'fazendo') {
+  // 2. Open a new one only if entering 'doing'.
+  if (to === 'doing') {
     await d.execute(
       `INSERT INTO sessions (task_id, started_at, tz, source, created_at)
        VALUES ($1,$2,$3,'auto',$4)`,
-      [id, agora, tzAtual(), agora],
+      [id, now, currentTz(), now],
     );
   }
 
-  // 3. Carimbos. started_at guarda só a PRIMEIRA vez em 'fazendo'.
+  // 3. Timestamps. started_at keeps only the FIRST time in 'doing'.
   await d.execute(
     `UPDATE tasks SET
        status     = $1,
-       queued_at  = CASE WHEN $1 = 'fila'    AND queued_at  IS NULL THEN $2 ELSE queued_at  END,
-       started_at = CASE WHEN $1 = 'fazendo' AND started_at IS NULL THEN $2 ELSE started_at END,
-       done_at    = CASE WHEN $1 = 'feito' THEN $2 ELSE NULL END,
-       outcome    = CASE WHEN $1 = 'feito' THEN outcome ELSE NULL END,
-       outcome_note = CASE WHEN $1 = 'feito' THEN outcome_note ELSE NULL END
+       queued_at  = CASE WHEN $1 = 'queued' AND queued_at  IS NULL THEN $2 ELSE queued_at  END,
+       started_at = CASE WHEN $1 = 'doing'  AND started_at IS NULL THEN $2 ELSE started_at END,
+       done_at    = CASE WHEN $1 = 'done' THEN $2 ELSE NULL END,
+       outcome    = CASE WHEN $1 = 'done' THEN outcome ELSE NULL END,
+       outcome_note = CASE WHEN $1 = 'done' THEN outcome_note ELSE NULL END
      WHERE id = $3`,
-    [para, agora, id],
+    [to, now, id],
   );
 
-  await d.execute(`INSERT INTO transitions (task_id, de, para, at) VALUES ($1,$2,$3,$4)`,
-    [id, de, para, agora]);
+  await d.execute(`INSERT INTO transitions (task_id, from_status, to_status, at) VALUES ($1,$2,$3,$4)`,
+    [id, from, to, now]);
 }
 
-/** Reordena dentro da coluna: pos vira a média dos vizinhos, sem reescrever a lista. */
-export async function reordena(id: number, anterior: number | null, proximo: number | null): Promise<void> {
-  const pos = anterior != null && proximo != null ? (anterior + proximo) / 2
-    : anterior != null ? anterior + 1
-    : proximo != null ? proximo - 1
+/** Reorders within the column: pos becomes the average of its neighbors, without rewriting the list. */
+export async function reorderTask(id: number, prev: number | null, next: number | null): Promise<void> {
+  const pos = prev != null && next != null ? (prev + next) / 2
+    : prev != null ? prev + 1
+    : next != null ? next - 1
     : 0;
   await patchRow('tasks', id, { pos });
 }
 
-/** Tira do quadro o que está em 'feito' há mais de N dias. Relatórios seguem vendo. */
-export async function arquivaFeitos(dias = 14): Promise<number> {
+/** Takes off the board what has been 'done' for more than N days. Reports still see it. */
+export async function archiveDoneTasks(days = 14): Promise<number> {
   const d = await db();
   const r = await d.execute(
     `UPDATE tasks SET archived_at = $1
-      WHERE status = 'feito' AND archived_at IS NULL AND done_at IS NOT NULL
+      WHERE status = 'done' AND archived_at IS NULL AND done_at IS NOT NULL
         AND julianday($1) - julianday(done_at) > $2`,
-    [agoraIso(), dias],
+    [nowIso(), days],
   );
   return r.rowsAffected;
 }
 
-// ───────────────────────────────── sessões ─────────────────────────────────
+// ──────────────────────────────── sessions ────────────────────────────────
 
 const SESSION_SELECT = `
   SELECT s.*, t.title, t.kind, p.name AS project_name, p.code AS project_code, p.color AS project_color
@@ -375,35 +385,35 @@ const SESSION_SELECT = `
     JOIN tasks t     ON t.id = s.task_id
     LEFT JOIN projects p ON p.id = t.project_id`;
 
-/** A sessão que está rodando agora, se houver. */
-export async function sessaoAberta(): Promise<SessionCard | null> {
+/** The session running right now, if any. */
+export async function getOpenSession(): Promise<SessionCard | null> {
   const d = await db();
   const r = await d.select<SessionCard[]>(`${SESSION_SELECT} WHERE s.ended_at IS NULL LIMIT 1`);
   return r[0] ?? null;
 }
 
-/** Fecha a sessão aberta sem mexer no status da tarefa (botão "pausar"). */
-export async function pausa(): Promise<void> {
+/** Closes the open session without touching the task's status (the "pause" button). */
+export async function pauseSession(): Promise<void> {
   const d = await db();
-  await d.execute(`UPDATE sessions SET ended_at = $1 WHERE ended_at IS NULL`, [agoraIso()]);
+  await d.execute(`UPDATE sessions SET ended_at = $1 WHERE ended_at IS NULL`, [nowIso()]);
 }
 
-export async function sessoesDoDia(key: DayKey): Promise<SessionCard[]> {
+export async function listDaySessions(key: DayKey): Promise<SessionCard[]> {
   const d = await db();
   const { from, to } = dayRangeUtc(key);
-  // Pega quem COMEÇOU no dia: sessão que atravessa a meia-noite pertence ao dia
-  // em que começou, que é como a pessoa pensa sobre o próprio dia.
+  // Takes whatever STARTED on the day: a session that crosses midnight belongs
+  // to the day it started on, which is how people think about their own day.
   return d.select<SessionCard[]>(
     `${SESSION_SELECT} WHERE s.started_at >= $1 AND s.started_at < $2 ORDER BY s.started_at`,
     [from, to],
   );
 }
 
-export async function totaisDoDia(key: DayKey): Promise<Totais> {
-  const sess = await sessoesDoDia(key);
-  const t: Totais = { total: 0, trabalho: 0, reuniao: 0, admin: 0 };
-  for (const s of sess) {
-    if (!s.ended_at) continue;   // a que roda é contada ao vivo na UI
+export async function getDayTotals(key: DayKey): Promise<Totals> {
+  const sessions = await listDaySessions(key);
+  const t: Totals = { total: 0, work: 0, meeting: 0, admin: 0 };
+  for (const s of sessions) {
+    if (!s.ended_at) continue;   // the running one is counted live in the UI
     const min = Math.round(
       (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000);
     t.total += min;
@@ -412,15 +422,15 @@ export async function totaisDoDia(key: DayKey): Promise<Totais> {
   return t;
 }
 
-/** Sessão lançada à mão — "esqueci de mover o card". */
-export async function criaSessao(
+/** A session entered by hand — "I forgot to move the card". */
+export async function createSession(
   task_id: number, started_at: string, ended_at: string, note: string | null = null,
 ): Promise<number> {
   const d = await db();
   const r = await d.execute(
     `INSERT INTO sessions (task_id, started_at, ended_at, tz, source, note, created_at)
      VALUES ($1,$2,$3,$4,'manual',$5,$6)`,
-    [task_id, started_at, ended_at, tzAtual(), note, agoraIso()],
+    [task_id, started_at, ended_at, currentTz(), note, nowIso()],
   );
   return r.lastInsertId as number;
 }
@@ -436,53 +446,53 @@ export async function deleteSession(id: number): Promise<void> {
   await d.execute(`DELETE FROM sessions WHERE id = $1`, [id]);
 }
 
-// ─────────────────────────────── relatórios ───────────────────────────────
+// ──────────────────────────────── reports ────────────────────────────────
 
-export interface LinhaProjeto {
+export interface ProjectTimeRow {
   project_id: number | null;
   project_name: string | null;
   project_code: string | null;
   project_color: string | null;
-  minutos: number;
+  minutes: number;
 }
 
-export async function horasPorProjeto(fromUtc: string, toUtc: string): Promise<LinhaProjeto[]> {
+export async function sumTimeByProject(fromUtc: string, toUtc: string): Promise<ProjectTimeRow[]> {
   const d = await db();
-  const rows = await d.select<LinhaProjeto[]>(
+  const rows = await d.select<ProjectTimeRow[]>(
     `SELECT p.id AS project_id, p.name AS project_name, p.code AS project_code,
             p.color AS project_color,
-            SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440) AS minutos
+            SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440) AS minutes
        FROM sessions s
        JOIN tasks t ON t.id = s.task_id
        LEFT JOIN projects p ON p.id = t.project_id
       WHERE s.ended_at IS NOT NULL AND s.started_at >= $1 AND s.started_at < $2
-      GROUP BY p.id ORDER BY minutos DESC`,
+      GROUP BY p.id ORDER BY minutes DESC`,
     [fromUtc, toUtc],
   );
-  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
+  return rows.map((r) => ({ ...r, minutes: Math.round(r.minutes) }));
 }
 
-export interface LinhaDia { dia: string; kind: TaskKind; minutos: number }
+export interface DayTimeRow { day: string; kind: TaskKind; minutes: number }
 
-export async function minutosPorDia(fromUtc: string, toUtc: string): Promise<LinhaDia[]> {
+export async function sumTimeByDay(fromUtc: string, toUtc: string): Promise<DayTimeRow[]> {
   const d = await db();
-  const rows = await d.select<LinhaDia[]>(
-    `SELECT date(s.started_at, 'localtime') AS dia, t.kind AS kind,
-            SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440) AS minutos
+  const rows = await d.select<DayTimeRow[]>(
+    `SELECT date(s.started_at, 'localtime') AS day, t.kind AS kind,
+            SUM((julianday(s.ended_at) - julianday(s.started_at)) * 1440) AS minutes
        FROM sessions s JOIN tasks t ON t.id = s.task_id
       WHERE s.ended_at IS NOT NULL AND s.started_at >= $1 AND s.started_at < $2
-      GROUP BY dia, kind ORDER BY dia`,
+      GROUP BY day, kind ORDER BY day`,
     [fromUtc, toUtc],
   );
-  return rows.map((r) => ({ ...r, minutos: Math.round(r.minutos) }));
+  return rows.map((r) => ({ ...r, minutes: Math.round(r.minutes) }));
 }
 
-/** Lead time (captura -> feito) e cycle time (começou -> feito), em horas. */
-export interface Fluxo { task_id: number; title: string; lead_h: number; cycle_h: number | null }
+/** Lead time (capture -> done) and cycle time (started -> done), in hours. */
+export interface TaskFlow { task_id: number; title: string; lead_h: number; cycle_h: number | null }
 
-export async function fluxoConcluidas(fromUtc: string, toUtc: string): Promise<Fluxo[]> {
+export async function listCompletedFlows(fromUtc: string, toUtc: string): Promise<TaskFlow[]> {
   const d = await db();
-  const rows = await d.select<Fluxo[]>(
+  const rows = await d.select<TaskFlow[]>(
     `SELECT id AS task_id, title,
             (julianday(done_at) - julianday(created_at)) * 24 AS lead_h,
             CASE WHEN started_at IS NULL THEN NULL
@@ -499,49 +509,50 @@ export async function fluxoConcluidas(fromUtc: string, toUtc: string): Promise<F
   }));
 }
 
-// ───────────────────────────────── notas ─────────────────────────────────
-// Só o ÍNDICE. Quem escreve aqui é o indexador (lib/notas.ts); a UI lê.
+// ───────────────────────────────── notes ─────────────────────────────────
+// Only the INDEX. The indexer (lib/notes.ts) writes here; the UI reads.
 
 /**
- * Nota + projeto resolvido pelo valor cru do frontmatter.
+ * Note + the project resolved from the raw frontmatter value.
  *
- * Código ganha de nome: se um projeto se CHAMA "CF03B04" e outro tem esse
- * CÓDIGO, `projeto: CF03B04` é o segundo. Isso é o COALESCE — e não um
- * ORDER BY, porque o SQLite recusa coluna correlacionada no ORDER BY de uma
- * subquery escalar ("no such column: n.projeto"), embora aceite no WHERE.
+ * Code beats name: if one project is NAMED "CF03B04" and another has that as
+ * its CODE, `project: CF03B04` means the second. That is what the COALESCE
+ * does — and not an ORDER BY, because SQLite rejects a correlated column in
+ * the ORDER BY of a scalar subquery ("no such column: n.project_ref"), even
+ * though it accepts one in the WHERE.
  */
-const NOTA_SELECT = `
+const NOTE_SELECT = `
   SELECT x.*, p.name AS project_name, p.color AS project_color FROM (
-    SELECT n.path, n.title, n.mtime, n.projeto, n.tags,
+    SELECT n.path, n.title, n.mtime, n.project_ref, n.tags,
            COALESCE(
-             (SELECT q.id FROM projects q WHERE q.code = n.projeto COLLATE NOCASE LIMIT 1),
-             (SELECT q.id FROM projects q WHERE q.name = n.projeto COLLATE NOCASE LIMIT 1)
+             (SELECT q.id FROM projects q WHERE q.code = n.project_ref COLLATE NOCASE LIMIT 1),
+             (SELECT q.id FROM projects q WHERE q.name = n.project_ref COLLATE NOCASE LIMIT 1)
            ) AS project_id
       FROM notes n) x
   LEFT JOIN projects p ON p.id = x.project_id`;
 
-type LinhaNota = Omit<NotaResumo, 'tags'> & { tags: string | null };
-const nota = (r: LinhaNota): NotaResumo => ({ ...r, tags: r.tags ? JSON.parse(r.tags) : [] });
+type NoteRow = Omit<NoteSummary, 'tags'> & { tags: string | null };
+const toNoteSummary = (r: NoteRow): NoteSummary => ({ ...r, tags: r.tags ? JSON.parse(r.tags) : [] });
 
-export async function notasIndexadas(): Promise<Array<{ path: string; mtime: number }>> {
+export async function listIndexedNotes(): Promise<Array<{ path: string; mtime: number }>> {
   const d = await db();
   return d.select(`SELECT path, mtime FROM notes`);
 }
 
 /**
- * Grava uma nota no índice. Três tabelas, sem transação: o plugin-sql não
- * garante a mesma conexão entre chamadas, e um índice meio escrito se
- * conserta no próximo scan — é justamente para isso que ele é reconstruível.
+ * Writes a note to the index. Three tables, no transaction: plugin-sql does
+ * not guarantee the same connection across calls, and a half-written index
+ * gets fixed on the next scan — that is exactly why it is rebuildable.
  */
-export async function indexaNota(n: NotaIndice): Promise<void> {
+export async function indexNote(n: NoteIndexEntry): Promise<void> {
   const d = await db();
   await d.execute(
-    `INSERT INTO notes (path, title, mtime, size, projeto, tags, indexed_at)
+    `INSERT INTO notes (path, title, mtime, size, project_ref, tags, indexed_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
      ON CONFLICT(path) DO UPDATE SET
        title = excluded.title, mtime = excluded.mtime, size = excluded.size,
-       projeto = excluded.projeto, tags = excluded.tags, indexed_at = excluded.indexed_at`,
-    [n.path, n.title, n.mtime, n.size, n.projeto, JSON.stringify(n.tags), agoraIso()],
+       project_ref = excluded.project_ref, tags = excluded.tags, indexed_at = excluded.indexed_at`,
+    [n.path, n.title, n.mtime, n.size, n.project_ref, JSON.stringify(n.tags), nowIso()],
   );
   await d.execute(`DELETE FROM notes_fts WHERE path = $1`, [n.path]);
   await d.execute(`INSERT INTO notes_fts (path, title, body) VALUES ($1,$2,$3)`, [n.path, n.title, n.body]);
@@ -552,76 +563,76 @@ export async function indexaNota(n: NotaIndice): Promise<void> {
   }
 }
 
-export async function desindexaNota(path: string): Promise<void> {
+export async function unindexNote(path: string): Promise<void> {
   const d = await db();
-  await d.execute(`DELETE FROM notes WHERE path = $1`, [path]);   // links caem junto (CASCADE)
+  await d.execute(`DELETE FROM notes WHERE path = $1`, [path]);   // links go with it (CASCADE)
   await d.execute(`DELETE FROM notes_fts WHERE path = $1`, [path]);
 }
 
-export async function renomeiaNoIndice(de: string, para: string): Promise<void> {
+export async function renameInIndex(from: string, to: string): Promise<void> {
   const d = await db();
-  await d.execute(`UPDATE notes SET path = $2 WHERE path = $1`, [de, para]);   // links: ON UPDATE CASCADE
-  await d.execute(`UPDATE notes_fts SET path = $2 WHERE path = $1`, [de, para]);
+  await d.execute(`UPDATE notes SET path = $2 WHERE path = $1`, [from, to]);   // links: ON UPDATE CASCADE
+  await d.execute(`UPDATE notes_fts SET path = $2 WHERE path = $1`, [from, to]);
 }
 
-/** Trocar de vault começa do zero: o índice do anterior não vale nada aqui. */
-export async function limpaIndice(): Promise<void> {
+/** Switching vaults starts from scratch: the previous vault's index is worthless here. */
+export async function clearIndex(): Promise<void> {
   const d = await db();
   await d.execute(`DELETE FROM notes`);
   await d.execute(`DELETE FROM notes_fts`);
 }
 
-export async function listaNotas(): Promise<NotaResumo[]> {
+export async function listNotes(): Promise<NoteSummary[]> {
   const d = await db();
-  return (await d.select<LinhaNota[]>(`${NOTA_SELECT} ORDER BY x.mtime DESC`)).map(nota);
+  return (await d.select<NoteRow[]>(`${NOTE_SELECT} ORDER BY x.mtime DESC`)).map(toNoteSummary);
 }
 
-export async function notasDoProjeto(projectId: number): Promise<NotaResumo[]> {
+export async function listProjectNotes(projectId: number): Promise<NoteSummary[]> {
   const d = await db();
-  const r = await d.select<LinhaNota[]>(`SELECT * FROM (${NOTA_SELECT}) WHERE project_id = $1 ORDER BY mtime DESC`,
+  const r = await d.select<NoteRow[]>(`SELECT * FROM (${NOTE_SELECT}) WHERE project_id = $1 ORDER BY mtime DESC`,
     [projectId]);
-  return r.map(nota);
+  return r.map(toNoteSummary);
 }
 
 /**
- * Quem aponta para esta nota. O link pode ter sido escrito pelo nome do
- * arquivo (`[[Snubber RCD]]`) ou pelo caminho (`[[Técnico/Snubber RCD]]`) —
- * o Obsidian aceita os dois, então os dois contam.
+ * Who links to this note. The link may have been written by file name
+ * (`[[RCD snubber]]`) or by path (`[[Technical/RCD snubber]]`) — Obsidian
+ * accepts both, so both count.
  */
-export async function backlinks(path: string, nomeNorm: string, pathNorm: string): Promise<NotaResumo[]> {
+export async function backlinks(path: string, nameNorm: string, pathNorm: string): Promise<NoteSummary[]> {
   const d = await db();
-  const r = await d.select<LinhaNota[]>(
-    `SELECT * FROM (${NOTA_SELECT})
+  const r = await d.select<NoteRow[]>(
+    `SELECT * FROM (${NOTE_SELECT})
       WHERE path IN (SELECT src FROM note_links WHERE target IN ($1, $2))
         AND path <> $3
       ORDER BY mtime DESC`,
-    [nomeNorm, pathNorm, path],
+    [nameNorm, pathNorm, path],
   );
-  return r.map(nota);
+  return r.map(toNoteSummary);
 }
 
-/** Todo `[[link]]` do vault, cru. Quem resolve alvo -> nota é lib/notas.ts. */
-export async function todasAsLigacoes(): Promise<Array<{ src: string; target: string }>> {
+/** Every `[[link]]` in the vault, raw. Resolving target -> note is lib/notes.ts's job. */
+export async function listAllLinks(): Promise<Array<{ src: string; target: string }>> {
   const d = await db();
   return d.select(`SELECT src, target FROM note_links`);
 }
 
 /**
- * Busca de texto. Cada palavra vira prefixo entre aspas — "reun" acha
- * "reunião", e aspas neutralizam os operadores do FTS5 (AND, NEAR, -),
- * que num campo de busca de usuário só produzem erro de sintaxe.
- * Título pesa 5× o corpo: achar no nome é quase sempre o que se queria.
+ * Text search. Each word becomes a quoted prefix — "meet" finds "meeting",
+ * and the quotes neutralize FTS5 operators (AND, NEAR, -), which in a user's
+ * search box only ever produce syntax errors.
+ * Title weighs 5× the body: a hit in the name is almost always what was wanted.
  */
-export async function buscaNotas(q: string, limite = 30): Promise<ResultadoBusca[]> {
-  const termos = q.trim().split(/\s+/).filter(Boolean);
-  if (!termos.length) return [];
-  const match = termos.map((t) => `"${t.replace(/"/g, '""')}"*`).join(' ');
+export async function searchNotes(q: string, limit = 30): Promise<SearchResult[]> {
+  const terms = q.trim().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [];
+  const match = terms.map((t) => `"${t.replace(/"/g, '""')}"*`).join(' ');
   const d = await db();
-  return d.select<ResultadoBusca[]>(
-    `SELECT path, title, snippet(notes_fts, 2, char(2), char(3), '…', 14) AS trecho
+  return d.select<SearchResult[]>(
+    `SELECT path, title, snippet(notes_fts, 2, char(2), char(3), '…', 14) AS snippet
        FROM notes_fts WHERE notes_fts MATCH $1
       ORDER BY bm25(notes_fts, 0, 5.0, 1.0) LIMIT $2`,
-    [match, limite],
+    [match, limit],
   );
 }
 
@@ -640,25 +651,25 @@ export async function setMeta(key: string, value: string): Promise<void> {
     [key, value]);
 }
 
-// ──────────────────────────────── interno ────────────────────────────────
+// ──────────────────────────────── internal ────────────────────────────────
 
 /**
- * UPDATE parcial. As chaves vêm de tipos TS, mas TS não existe em runtime —
- * então validamos contra uma lista branca antes de interpolar no SQL.
+ * Partial UPDATE. The keys come from TS types, but TS doesn't exist at runtime —
+ * so we check them against an allowlist before interpolating into the SQL.
  */
-const COLUNAS: Record<string, ReadonlySet<string>> = {
+const COLUMNS: Record<string, ReadonlySet<string>> = {
   projects: new Set(['name', 'code', 'color', 'archived_at']),
   tasks: new Set(['title', 'project_id', 'kind', 'status', 'due_at', 'notes', 'pos', 'archived_at', 'outcome', 'outcome_note']),
   sessions: new Set(['started_at', 'ended_at', 'task_id', 'note']),
 };
 
-async function patchRow(tabela: keyof typeof COLUNAS, id: number, patch: object): Promise<void> {
-  const campos = Object.keys(patch).filter((c) => COLUNAS[tabela].has(c));
-  if (!campos.length) return;
+async function patchRow(table: keyof typeof COLUMNS, id: number, patch: object): Promise<void> {
+  const fields = Object.keys(patch).filter((c) => COLUMNS[table].has(c));
+  if (!fields.length) return;
   const d = await db();
-  const set = campos.map((c, i) => `${c} = $${i + 1}`).join(', ');
+  const set = fields.map((c, i) => `${c} = $${i + 1}`).join(', ');
   await d.execute(
-    `UPDATE ${tabela} SET ${set} WHERE id = $${campos.length + 1}`,
-    [...campos.map((c) => (patch as Record<string, unknown>)[c]), id],
+    `UPDATE ${table} SET ${set} WHERE id = $${fields.length + 1}`,
+    [...fields.map((c) => (patch as Record<string, unknown>)[c]), id],
   );
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { toasts } from '../lib/toast';
 
-const BORDA = { ok: 'border-l-ok', erro: 'border-l-danger', aviso: 'border-l-warn' } as const;
+const BORDER = { ok: 'border-l-ok', error: 'border-l-danger', warning: 'border-l-warn' } as const;
 </script>
 
 <template>
@@ -9,7 +9,7 @@ const BORDA = { ok: 'border-l-ok', erro: 'border-l-danger', aviso: 'border-l-war
     <div v-for="t in toasts" :key="t.id"
       class="max-w-[340px] rounded-md border border-rule-strong border-l-2 bg-surface
              px-3.5 py-2 text-[14px] shadow-pop"
-      :class="BORDA[t.tom]">
+      :class="BORDER[t.tone]">
       {{ t.msg }}
     </div>
   </div>

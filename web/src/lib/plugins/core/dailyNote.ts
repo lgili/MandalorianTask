@@ -1,64 +1,64 @@
-// Plugin de núcleo: Nota do dia.
+// Core plugin: Daily note.
 //
-// A nota diária do Obsidian, com o que só o Bancada sabe: o trabalho que o
-// quadro MEDIU hoje entra na nota sozinho. Escrito só com a API pública —
-// nada de import de dentro do app. É a prova de que a API basta.
+// Obsidian's daily note, plus what only Bancada knows: the work the board
+// MEASURED today goes into the note on its own. Written only against the public
+// API — no imports from inside the app. It's the proof that the API is enough.
 
-import type { Bancada, DefinicaoPlugin, Manifesto, ProjetoInfo, SessaoInfo } from '../types';
+import type { Bancada, PluginDefinition, PluginManifest, ProjectInfo, SessionInfo } from '../types';
 
-export const manifesto: Manifesto = {
-  id: 'nota-do-dia',
-  nome: 'Nota do dia',
-  versao: '1.0.0',
-  descricao: 'Uma nota por dia em Diário/, já com as sessões de trabalho que o quadro mediu.',
-  autor: 'Bancada',
+export const manifest: PluginManifest = {
+  id: 'daily-note',
+  name: 'Daily note',
+  version: '1.0.0',
+  description: 'One note per day in Daily/, pre-filled with the work sessions the board measured.',
+  author: 'Bancada',
 };
 
 const p2 = (n: number) => String(n).padStart(2, '0');
-const hoje = () => { const d = new Date(); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; };
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; };
 const hhmm = (iso: string) => { const d = new Date(iso); return `${p2(d.getHours())}:${p2(d.getMinutes())}`; };
-function duracao(ini: string, fim: string): string {
-  const m = Math.max(0, Math.round((new Date(fim).getTime() - new Date(ini).getTime()) / 60000));
+function duration(start: string, end: string): string {
+  const m = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${p2(m % 60)}`;
 }
 
-/** Uma linha por sessão: horário, tarefa, projeto e duração. */
-export function blocoDoTrabalho(sessoes: SessaoInfo[], projetos: ProjetoInfo[], agora = new Date()): string {
-  if (!sessoes.length) return '_Nenhuma sessão medida ainda hoje._';
-  return sessoes.map((s) => {
-    const p = projetos.find((x) => x.id === s.projeto);
-    const fim = s.fim ?? agora.toISOString();
-    const proj = p ? ` · ${p.codigo ?? p.nome}` : '';
-    return `- ${hhmm(s.inicio)}–${s.fim ? hhmm(s.fim) : 'agora'} · ${s.titulo}${proj} (${duracao(s.inicio, fim)})`;
+/** One line per session: time, task, project and duration. */
+export function formatWorkBlock(sessions: SessionInfo[], projects: ProjectInfo[], now = new Date()): string {
+  if (!sessions.length) return '_No sessions measured yet today._';
+  return sessions.map((s) => {
+    const p = projects.find((x) => x.id === s.project);
+    const end = s.end ?? now.toISOString();
+    const proj = p ? ` · ${p.code ?? p.name}` : '';
+    return `- ${hhmm(s.start)}–${s.end ? hhmm(s.end) : 'now'} · ${s.title}${proj} (${duration(s.start, end)})`;
   }).join('\n');
 }
 
-export const definicao: DefinicaoPlugin = {
-  aoLigar(b: Bancada) {
-    b.comandos.adiciona({
-      id: 'abrir',
-      nome: 'Abrir a nota de hoje',
-      async executa() {
-        const path = `Diário/${hoje()}.md`;
-        if (!(await b.notas.existe(path))) {
-          const sessoes = await b.tarefas.sessoesDoDia();
-          await b.notas.escreve(path, `## Trabalho de hoje\n${blocoDoTrabalho(sessoes, b.projetos.lista())}\n\n## Notas\n\n`);
+export const definition: PluginDefinition = {
+  onload(b: Bancada) {
+    b.commands.add({
+      id: 'open',
+      name: "Open today's note",
+      async run() {
+        const path = `Daily/${today()}.md`;
+        if (!(await b.notes.exists(path))) {
+          const sessions = await b.tasks.sessionsOn();
+          await b.notes.write(path, `## Today's work\n${formatWorkBlock(sessions, b.projects.list())}\n\n## Notes\n\n`);
         }
-        b.notas.abre(path);
+        b.notes.open(path);
       },
     });
 
-    b.comandos.adiciona({
-      id: 'inserir-trabalho',
-      nome: 'Inserir o trabalho de hoje na nota aberta',
-      async executa() {
-        const path = b.notas.aberta();
-        if (!path) { b.ui.toast('Abra uma nota primeiro.', 'aviso'); return; }
-        const texto = await b.notas.le(path);
-        const sessoes = await b.tarefas.sessoesDoDia();
-        const bloco = blocoDoTrabalho(sessoes, b.projetos.lista());
-        await b.notas.escreve(path, `${texto.replace(/\s*$/, '')}\n\n## Trabalho de hoje\n${bloco}\n`);
-        b.ui.toast(`${sessoes.length} ${sessoes.length === 1 ? 'sessão inserida' : 'sessões inseridas'}`);
+    b.commands.add({
+      id: 'insert-work',
+      name: "Insert today's work into the open note",
+      async run() {
+        const path = b.notes.active();
+        if (!path) { b.ui.notice('Open a note first.', 'warning'); return; }
+        const text = await b.notes.read(path);
+        const sessions = await b.tasks.sessionsOn();
+        const block = formatWorkBlock(sessions, b.projects.list());
+        await b.notes.write(path, `${text.replace(/\s*$/, '')}\n\n## Today's work\n${block}\n`);
+        b.ui.notice(`${sessions.length} ${sessions.length === 1 ? 'session inserted' : 'sessions inserted'}`);
       },
     });
   },

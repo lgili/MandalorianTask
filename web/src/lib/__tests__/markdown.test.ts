@@ -1,137 +1,146 @@
 import { describe, expect, it } from 'vitest';
 import {
-  alvosDe, arquivoPara, linksDe, nomeArquivo, normalizaAlvo, projetoDe, separaFrontmatter,
-  semCodigo, tagsDe, textoParaBusca, tituloDe, trecho, trocaAlvo,
+  extractLinks, extractProjectRef, extractSnippet, extractTags, extractTargets, extractTitle,
+  normalizeTarget, noteName, retargetLinks, splitFrontmatter, stripCode, toFileName, toSearchText,
 } from '../markdown';
 
 describe('frontmatter', () => {
-  it('separa YAML do corpo e conta as linhas', () => {
-    const fm = separaFrontmatter('---\ntitle: Ata\nprojeto: CF03B04\n---\n# Corpo\n');
-    expect(fm.dados).toEqual({ title: 'Ata', projeto: 'CF03B04' });
-    expect(fm.corpo).toBe('# Corpo\n');
-    expect(fm.linhas).toBe(4);
+  it('splits the YAML from the body and counts the lines', () => {
+    const fm = splitFrontmatter('---\ntitle: Minutes\nproject: CF03B04\n---\n# Body\n');
+    expect(fm.data).toEqual({ title: 'Minutes', project: 'CF03B04' });
+    expect(fm.body).toBe('# Body\n');
+    expect(fm.lineCount).toBe(4);
   });
 
-  it('sem frontmatter, o texto inteiro é corpo', () => {
-    expect(separaFrontmatter('# Só corpo').corpo).toBe('# Só corpo');
+  it('without frontmatter, the whole text is body', () => {
+    expect(splitFrontmatter('# Only body').body).toBe('# Only body');
   });
 
-  it('YAML quebrado não derruba a nota: vira corpo', () => {
-    const fm = separaFrontmatter('---\ntitle: [aberto\n---\ntexto');
-    expect(fm.dados).toEqual({});
-    expect(fm.corpo).toContain('texto');
+  it('broken YAML does not take the note down: it becomes body', () => {
+    const fm = splitFrontmatter('---\ntitle: [unclosed\n---\ntext');
+    expect(fm.data).toEqual({});
+    expect(fm.body).toContain('text');
   });
 
-  it('aceita CRLF, que é o que o Windows grava', () => {
-    expect(separaFrontmatter('---\r\ntitle: X\r\n---\r\ncorpo').dados).toEqual({ title: 'X' });
+  it('accepts CRLF, which is what Windows writes', () => {
+    expect(splitFrontmatter('---\r\ntitle: X\r\n---\r\nbody').data).toEqual({ title: 'X' });
   });
 });
 
-describe('título', () => {
-  it('frontmatter ganha de cabeçalho, cabeçalho ganha de nome de arquivo', () => {
-    expect(tituloDe('a.md', separaFrontmatter('---\ntitle: Do FM\n---\n# Do H1'))).toBe('Do FM');
-    expect(tituloDe('a.md', separaFrontmatter('# Do H1\ntexto'))).toBe('Do H1');
-    expect(tituloDe('Pasta/Do arquivo.md', separaFrontmatter('texto'))).toBe('Do arquivo');
+describe('title', () => {
+  it('frontmatter beats heading, heading beats file name', () => {
+    expect(extractTitle('a.md', splitFrontmatter('---\ntitle: From FM\n---\n# From H1'))).toBe('From FM');
+    expect(extractTitle('a.md', splitFrontmatter('# From H1\ntext'))).toBe('From H1');
+    expect(extractTitle('Folder/From file.md', splitFrontmatter('text'))).toBe('From file');
   });
 
-  it('`## ` não é título, e `# ` dentro de código também não', () => {
-    expect(tituloDe('x.md', separaFrontmatter('## Seção\n```\n# comentario\n```'))).toBe('x');
+  it('`## ` is not a title, and neither is `# ` inside code', () => {
+    expect(extractTitle('x.md', splitFrontmatter('## Section\n```\n# comment\n```'))).toBe('x');
   });
 });
 
 describe('links', () => {
-  it('normaliza pasta, extensão, seção e apelido', () => {
-    expect(normalizaAlvo('Flyback Rev C.md#Ensaio|o flyback')).toBe('flyback rev c');
-    expect(normalizaAlvo('Projetos\\Flyback')).toBe('projetos/flyback');
+  it('normalizes folder, extension, section and alias', () => {
+    expect(normalizeTarget('Flyback Rev C.md#Thermal test|the flyback')).toBe('flyback rev c');
+    expect(normalizeTarget('Projects\\Flyback')).toBe('projects/flyback');
   });
 
-  it('extrai rótulo do apelido e marca embed', () => {
-    const [a, b] = linksDe('ver [[Snubber RCD|o snubber]] e ![[diagrama.png]]');
-    expect(a).toMatchObject({ alvo: 'snubber rcd', rotulo: 'o snubber', embed: false });
+  it('takes the label from the alias and marks embeds', () => {
+    const [a, b] = extractLinks('see [[RCD snubber|the snubber]] and ![[diagram.png]]');
+    expect(a).toMatchObject({ target: 'rcd snubber', label: 'the snubber', embed: false });
     expect(b.embed).toBe(true);
   });
 
-  it('ignora link dentro de código', () => {
-    expect(alvosDe('`[[falso]]` e\n```\n[[também falso]]\n```\n[[verdadeiro]]')).toEqual(['verdadeiro']);
+  it('ignores links inside code', () => {
+    expect(extractTargets('`[[fake]]` and\n```\n[[also fake]]\n```\n[[real]]')).toEqual(['real']);
   });
 
-  it('não repete o mesmo alvo', () => {
-    expect(alvosDe('[[A]] [[a]] [[A|outro]]')).toEqual(['a']);
+  it('does not repeat the same target', () => {
+    expect(extractTargets('[[A]] [[a]] [[A|other]]')).toEqual(['a']);
   });
 });
 
 describe('tags', () => {
-  it('junta frontmatter e corpo, sem # e em minúsculo', () => {
-    const fm = separaFrontmatter('---\ntags: [Ata, reuniao]\n---\ntexto #Hardware e #fonte/flyback');
-    expect(tagsDe(fm).sort()).toEqual(['ata', 'fonte/flyback', 'hardware', 'reuniao']);
+  it('merges frontmatter and body, without # and lowercased', () => {
+    const fm = splitFrontmatter('---\ntags: [Minutes, meeting]\n---\ntext #Hardware and #power/flyback');
+    expect(extractTags(fm).sort()).toEqual(['hardware', 'meeting', 'minutes', 'power/flyback']);
   });
 
-  it('número puro não é tag, e cabeçalho não é tag', () => {
-    expect(tagsDe(separaFrontmatter('# Título\nversão #2026 e #v2'))).toEqual(['v2']);
+  it('a pure number is not a tag, and a heading is not a tag', () => {
+    expect(extractTags(splitFrontmatter('# Title\nversion #2026 and #v2'))).toEqual(['v2']);
   });
 
-  it('aceita acento', () => {
-    expect(tagsDe(separaFrontmatter('#reunião'))).toEqual(['reunião']);
-  });
-});
-
-describe('projeto', () => {
-  it('lê `projeto:` e aceita a forma de link do Obsidian', () => {
-    expect(projetoDe(separaFrontmatter('---\nprojeto: CF03B04\n---\n'))).toBe('CF03B04');
-    expect(projetoDe(separaFrontmatter('---\nprojeto: "[[NACQ]]"\n---\n'))).toBe('NACQ');
-    expect(projetoDe(separaFrontmatter('sem fm'))).toBeNull();
+  it('accepts accents', () => {
+    expect(extractTags(splitFrontmatter('#résumé'))).toEqual(['résumé']);
   });
 });
 
-describe('arquivos', () => {
-  it('nome de arquivo tira pasta e extensão', () => {
-    expect(nomeArquivo('a/b/Nota Legal.md')).toBe('Nota Legal');
+describe('project', () => {
+  it('reads `project:` and accepts the Obsidian link form', () => {
+    expect(extractProjectRef(splitFrontmatter('---\nproject: CF03B04\n---\n'))).toBe('CF03B04');
+    expect(extractProjectRef(splitFrontmatter('---\nproject: "[[NACQ]]"\n---\n'))).toBe('NACQ');
+    expect(extractProjectRef(splitFrontmatter('no fm'))).toBeNull();
   });
 
-  it('título vira nome seguro no Windows', () => {
-    expect(arquivoPara('Ata: 12/09 — revisão?')).toBe('Ata 12 09 — revisão.md');
-    expect(arquivoPara('  ...  ')).toBe('Sem título.md');
+  it('still reads the legacy `projeto:` key that older notes carry', () => {
+    // Backward compatibility: earlier versions of Bancada wrote the Portuguese key.
+    expect(extractProjectRef(splitFrontmatter('---\nprojeto: CF03B04\n---\n'))).toBe('CF03B04');
+  });
+
+  it('prefers `project:` when a note carries both keys', () => {
+    expect(extractProjectRef(splitFrontmatter('---\nprojeto: OLD\nproject: NEW\n---\n'))).toBe('NEW');
   });
 });
 
-describe('busca', () => {
-  it('texto de busca troca link pelo rótulo e tira marcação', () => {
-    expect(textoParaBusca(separaFrontmatter('**Ver** [[Snubber|o snubber]] `x`')))
-      .toBe('Ver o snubber x');
+describe('files', () => {
+  it('note name drops folder and extension', () => {
+    expect(noteName('a/b/Nice Note.md')).toBe('Nice Note');
   });
 
-  it('trecho acha o termo ignorando acento', () => {
-    expect(trecho('a ata da reunião de revisão do snubber', 'reuniao', 5)).toContain('reunião');
+  it('title becomes a Windows-safe name', () => {
+    expect(toFileName('Minutes: 12/09 — résumé?')).toBe('Minutes 12 09 — résumé.md');
+    expect(toFileName('  ...  ')).toBe('Untitled.md');
+  });
+});
+
+describe('search', () => {
+  it('search text swaps a link for its label and strips markup', () => {
+    expect(toSearchText(splitFrontmatter('**See** [[Snubber|the snubber]] `x`')))
+      .toBe('See the snubber x');
   });
 
-  it('semCodigo preserva as quebras de linha, para número de linha continuar valendo', () => {
+  it('snippet finds the term ignoring accents', () => {
+    expect(extractSnippet('the minutes of the café meeting on the snubber review', 'cafe', 5)).toContain('café');
+  });
+
+  it('stripCode preserves line breaks, so line numbers stay valid', () => {
     const md = 'a\n```\nb\n```\nc';
-    expect(semCodigo(md).split('\n')).toHaveLength(md.split('\n').length);
+    expect(stripCode(md).split('\n')).toHaveLength(md.split('\n').length);
   });
 });
 
-describe('renomear reescreve links', () => {
-  const antigos = ['snubber rcd', 'técnico/snubber rcd'];
+describe('renaming rewrites links', () => {
+  const oldTargets = ['rcd snubber', 'technical/rcd snubber'];
 
-  it('troca o alvo preservando seção e apelido', () => {
-    expect(trocaAlvo('ver [[Snubber RCD#Dimensionamento|o snubber]]', antigos, 'Grampeador'))
-      .toBe('ver [[Grampeador#Dimensionamento|o snubber]]');
+  it('retargets while preserving section and alias', () => {
+    expect(retargetLinks('see [[RCD snubber#Sizing|the snubber]]', oldTargets, 'Clamp'))
+      .toBe('see [[Clamp#Sizing|the snubber]]');
   });
 
-  it('acha pelo caminho também, e mantém embed', () => {
-    expect(trocaAlvo('![[Técnico/Snubber RCD]]', antigos, 'Grampeador')).toBe('![[Grampeador]]');
+  it('finds it by path too, and keeps the embed', () => {
+    expect(retargetLinks('![[Technical/RCD snubber]]', oldTargets, 'Clamp')).toBe('![[Clamp]]');
   });
 
-  it('ignora caixa e extensão, como o Obsidian', () => {
-    expect(trocaAlvo('[[snubber rcd.md]]', antigos, 'Grampeador')).toBe('[[Grampeador]]');
+  it('ignores case and extension, like Obsidian', () => {
+    expect(retargetLinks('[[rcd snubber.md]]', oldTargets, 'Clamp')).toBe('[[Clamp]]');
   });
 
-  it('não mexe em link de outra nota', () => {
-    expect(trocaAlvo('[[Snubber RC]] e [[Flyback]]', antigos, 'X')).toBe('[[Snubber RC]] e [[Flyback]]');
+  it('leaves links to other notes alone', () => {
+    expect(retargetLinks('[[RC snubber]] and [[Flyback]]', oldTargets, 'X')).toBe('[[RC snubber]] and [[Flyback]]');
   });
 
-  it('não mexe em link dentro de código', () => {
-    const md = '`[[Snubber RCD]]`\n```\n[[Snubber RCD]]\n```\n[[Snubber RCD]]';
-    expect(trocaAlvo(md, antigos, 'G')).toBe('`[[Snubber RCD]]`\n```\n[[Snubber RCD]]\n```\n[[G]]');
+  it('leaves links inside code alone', () => {
+    const md = '`[[RCD snubber]]`\n```\n[[RCD snubber]]\n```\n[[RCD snubber]]';
+    expect(retargetLinks(md, oldTargets, 'G')).toBe('`[[RCD snubber]]`\n```\n[[RCD snubber]]\n```\n[[G]]');
   });
 });

@@ -6,161 +6,161 @@ import { Square, AlertTriangle, Plus, Settings, Puzzle } from 'lucide-vue-next';
 import ToastHost from './components/ToastHost.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import QuickAdd from './components/QuickAdd.vue';
-import Paleta from './components/Palette.vue';
-import ChipProjeto from './components/ProjectChip.vue';
+import Palette from './components/Palette.vue';
+import ProjectChip from './components/ProjectChip.vue';
 import {
-  abreDetalhe, abreQuickAdd, arrastando, carregaProjetos, carregaQuadro, carregaDia,
-  criaProjeto, paleta, projetos, quickAdd, rodando, pausa, soltaEmProjeto, tarefas, sessoesDia,
+  openTaskDetail, openQuickAdd, draggingTaskId, loadProjects, loadBoard, loadDay,
+  createProject, palette, projects, quickAdd, running, pause, dropOnProject, tasks, daySessions,
 } from './lib/store';
-import { corPrevista } from './lib/projects';
-import { abreVault, criaNota, escolheVault, notas, sincroniza, vaultAberto } from './lib/notes';
-import { registraComando } from './lib/commands';
-import { iniciaPlugins } from './lib/plugins';
-import { paineis } from './lib/plugins/api';
-import { alternaTema } from './lib/theme';
+import { predictNextColor } from './lib/projects';
+import { openVault, createNote, pickVault, notes, syncVault, vaultPath } from './lib/notes';
+import { registerCommand } from './lib/commands';
+import { initPlugins } from './lib/plugins';
+import { panels } from './lib/plugins/api';
+import { cycleTheme } from './lib/theme';
 import * as api from './lib/db';
 import { toast } from './lib/toast';
-import { agora, decorrido } from './lib/clock';
-import { ehAtalhoDeFuga, podeAtalho } from './lib/keyboard';
+import { now, fmtElapsed } from './lib/clock';
+import { isEscapeHatch, canUseBareShortcut } from './lib/keyboard';
 import { addDays, dayKey } from './lib/time';
 
 const route = useRoute();
 const router = useRouter();
-const versao = __APP_VERSION__;
-const navs = router.getRoutes().filter((r) => r.meta?.tecla)
-  .sort((a, b) => a.meta.tecla.localeCompare(b.meta.tecla));
+const appVersion = __APP_VERSION__;
+const navs = router.getRoutes().filter((r) => r.meta?.shortcut)
+  .sort((a, b) => a.meta.shortcut.localeCompare(b.meta.shortcut));
 
-const contagem = computed<Record<string, number | string>>(() => ({
-  '/projetos': projetos.value.length,
-  '/notas': notas.value.length,
-  '/backlog': tarefas.value.filter((t) => t.status === 'backlog').length,
-  '/quadro': tarefas.value.filter((t) => t.status === 'fila' || t.status === 'fazendo').length,
-  '/hoje': sessoesDia.value.length,
+const navCounts = computed<Record<string, number | string>>(() => ({
+  '/projects': projects.value.length,
+  '/notes': notes.value.length,
+  '/capture': tasks.value.filter((t) => t.status === 'backlog').length,
+  '/board': tasks.value.filter((t) => t.status === 'queued' || t.status === 'doing').length,
+  '/today': daySessions.value.length,
 }));
 
-/** Os seis projetos mais ativos. `resumoProjetos` já ordena por atividade. */
-const projetosVisiveis = computed(() => projetos.value.slice(0, 6));
+/** The six most active projects. `listProjectSummaries` already sorts by activity. */
+const visibleProjects = computed(() => projects.value.slice(0, 6));
 
-// ── criar projeto SEM sair de onde se está ────────────────────────────────
-// O `+` daqui só navegava para /projetos, onde ainda era preciso um segundo
-// clique para o campo aparecer: duas navegações e dois cliques para a operação
-// que o dono mais faz. Agora a linha nasce em edição aqui mesmo.
-const criandoProjeto = ref(false);
-const nomeProjeto = ref('');
-const campoProjeto = ref<HTMLInputElement | null>(null);
-/** Acende o ponto com a cor que o projeto VAI receber, antes de confirmar. */
-const corDoNovo = computed(() => corPrevista(projetos.value));
+// ── create a project WITHOUT leaving where you are ────────────────────────
+// The `+` here used to just navigate to /projects, where a second click was
+// still needed for the field to show up: two navigations and two clicks for the
+// operation the owner does most. Now the row is born in edit mode right here.
+const creatingProject = ref(false);
+const newProjectName = ref('');
+const projectInput = ref<HTMLInputElement | null>(null);
+/** Lights the dot with the color the project WILL get, before confirming. */
+const nextColor = computed(() => predictNextColor(projects.value));
 
-async function abreCriacaoProjeto(): Promise<void> {
-  criandoProjeto.value = true;
+async function startProjectCreation(): Promise<void> {
+  creatingProject.value = true;
   await nextTick();
-  campoProjeto.value?.focus();
+  projectInput.value?.focus();
 }
 
-async function confirmaProjeto(): Promise<void> {
-  const p = await criaProjeto(nomeProjeto.value);
-  nomeProjeto.value = '';
+async function confirmProject(): Promise<void> {
+  const p = await createProject(newProjectName.value);
+  newProjectName.value = '';
   if (!p) return;
-  criandoProjeto.value = false;
-  router.push(`/projeto/${p.id}`);
+  creatingProject.value = false;
+  router.push(`/project/${p.id}`);
 }
 
-/** Projeto sob o card arrastado. */
-const alvoProjeto = ref<number | null>(null);
+/** Project under the dragged card. */
+const dropTargetProject = ref<number | null>(null);
 
-/** O projeto da tela atual, para o quick-add nascer já vinculado a ele. */
-const projetoDaTela = computed(() => {
-  if (route.name !== 'projeto') return null;
+/** The current screen's project, so quick-add starts already linked to it. */
+const screenProjectId = computed(() => {
+  if (route.name !== 'project') return null;
   const id = Number(route.params.id);
   return Number.isFinite(id) ? id : null;
 });
 
-/** Título da faixa de cima: nome do projeto (ou do painel) quando se está dentro de um. */
-const tituloTela = computed(() => {
+/** Title of the top bar: the project's (or panel's) name when you are inside one. */
+const screenTitle = computed(() => {
   if (route.name === 'plugin') {
-    return paineis.value.find((p) => p.plugin === route.params.plugin && p.id === route.params.painel)?.titulo ?? 'Plugin';
+    return panels.value.find((p) => p.plugin === route.params.plugin && p.id === route.params.panel)?.title ?? 'Plugin';
   }
-  if (route.name !== 'projeto') return route.meta.titulo;
-  if (route.params.id === 'caixa') return 'Caixa';
-  return projetos.value.find((p) => p.id === Number(route.params.id))?.name ?? 'Projeto';
+  if (route.name !== 'project') return route.meta.title;
+  if (route.params.id === 'inbox') return 'Inbox';
+  return projects.value.find((p) => p.id === Number(route.params.id))?.name ?? 'Project';
 });
 
-// ── comandos do próprio app ───────────────────────────────────────────────
-// Registrados como qualquer plugin registraria: a paleta não distingue.
-async function novaNota(): Promise<void> {
-  if (!vaultAberto.value) { router.push('/notas'); return; }
-  const p = await criaNota('Sem título');
-  router.push({ name: 'notas', query: { n: p } });
+// ── the app's own commands ────────────────────────────────────────────────
+// Registered the way any plugin would register them: the palette can't tell them apart.
+async function newNote(): Promise<void> {
+  if (!vaultPath.value) { router.push('/notes'); return; }
+  const p = await createNote('Untitled');
+  router.push({ name: 'notes', query: { note: p } });
 }
-const COMANDOS = [
-  { id: 'nova-tarefa', nome: 'Nova tarefa', tecla: 'n', executa: () => abreQuickAdd(projetoDaTela.value) },
-  { id: 'nova-nota', nome: 'Nova nota', tecla: 'ctrl+alt+n', executa: novaNota },
-  { id: 'novo-projeto', nome: 'Novo projeto', executa: () => router.push('/projetos') },
-  { id: 'buscar', nome: 'Buscar em tudo', tecla: 'ctrl+k', executa: () => { paleta.value = 'busca'; } },
-  { id: 'pausar', nome: 'Pausar a tarefa que está rodando', executa: () => pausa() },
-  { id: 'alternar-tema', nome: 'Alternar tema', executa: () => { alternaTema(); } },
-  { id: 'abrir-vault', nome: 'Abrir outra pasta como vault', executa: async () => { await escolheVault(); } },
-  { id: 'reindexar', nome: 'Reindexar o vault', executa: async () => {
-    const r = await sincroniza(); toast.ok(`${r.lidas} notas relidas`);
+const APP_COMMANDS = [
+  { id: 'new-task', name: 'New task', shortcut: 'n', run: () => openQuickAdd(screenProjectId.value) },
+  { id: 'new-note', name: 'New note', shortcut: 'ctrl+alt+n', run: newNote },
+  { id: 'new-project', name: 'New project', run: () => router.push('/projects') },
+  { id: 'search', name: 'Search everything', shortcut: 'ctrl+k', run: () => { palette.value = 'search'; } },
+  { id: 'pause', name: 'Pause the running task', run: () => pause() },
+  { id: 'cycle-theme', name: 'Switch theme', run: () => { cycleTheme(); } },
+  { id: 'open-vault', name: 'Open another folder as vault', run: async () => { await pickVault(); } },
+  { id: 'reindex', name: 'Reindex the vault', run: async () => {
+    const r = await syncVault(); toast.ok(`${r.reread} notes re-read`);
   } },
-  ...navs.map((r) => ({ id: `ir:${r.path}`, nome: `Ir para ${r.meta.titulo}`, tecla: r.meta.tecla,
-    executa: () => router.push(r.path) })),
+  ...navs.map((r) => ({ id: `go:${r.path}`, name: `Go to ${r.meta.title}`, shortcut: r.meta.shortcut,
+    run: () => router.push(r.path) })),
 ];
-for (const c of COMANDOS) registraComando({ ...c, dono: 'bancada' });
+for (const c of APP_COMMANDS) registerCommand({ ...c, owner: 'bancada' });
 
 useEventListener(window, 'keydown', (e: KeyboardEvent) => {
-  // Ctrl+K / Ctrl+O busca, Ctrl+P comandos — de QUALQUER lugar, inclusive de
-  // dentro do editor: é o jeito de sair de uma nota sem tocar no mouse.
+  // Ctrl+K / Ctrl+O search, Ctrl+P commands — from ANYWHERE, including inside
+  // the editor: it's how you get out of a note without touching the mouse.
   const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
-  if (mod && (e.key === 'k' || e.key === 'o')) { e.preventDefault(); paleta.value = 'busca'; return; }
-  if (mod && e.key === 'p') { e.preventDefault(); paleta.value = 'comandos'; return; }
-  if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === 'n') { e.preventDefault(); void novaNota(); return; }
+  if (mod && (e.key === 'k' || e.key === 'o')) { e.preventDefault(); palette.value = 'search'; return; }
+  if (mod && e.key === 'p') { e.preventDefault(); palette.value = 'commands'; return; }
+  if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === 'n') { e.preventDefault(); void newNote(); return; }
 
-  // `n` abre a captura de qualquer tela — inclusive dentro de um projeto, e aí
-  // já vem vinculada a ele.
-  if (podeAtalho(e) && e.key === 'n') {
+  // `n` opens capture from any screen — including inside a project, and then
+  // it comes already linked to it.
+  if (canUseBareShortcut(e) && e.key === 'n') {
     e.preventDefault();
-    abreQuickAdd(projetoDaTela.value);
+    openQuickAdd(screenProjectId.value);
     return;
   }
   for (const r of navs) {
-    if (ehAtalhoDeFuga(e, r.meta.tecla) || (podeAtalho(e) && e.key === r.meta.tecla)) {
+    if (isEscapeHatch(e, r.meta.shortcut) || (canUseBareShortcut(e) && e.key === r.meta.shortcut)) {
       e.preventDefault(); router.push(r.path); return;
     }
   }
 });
 
-const relogio = computed(() => rodando.value ? decorrido(rodando.value.started_at, agora.value) : null);
-const esquecida = computed(() => rodando.value
-  ? (agora.value.getTime() - new Date(rodando.value.started_at).getTime()) / 3600000 > 8 : false);
+const clock = computed(() => running.value ? fmtElapsed(running.value.started_at, now.value) : null);
+const forgottenSession = computed(() => running.value
+  ? (now.value.getTime() - new Date(running.value.started_at).getTime()) / 3600000 > 8 : false);
 
-/** ESTA SEMANA: concluídas + sparkline dos últimos 7 dias. */
-const semana = ref<number[]>([0, 0, 0, 0, 0, 0, 0]);
-const concluidasSemana = computed(() => semana.value.reduce((a, b) => a + b, 0));
-async function carregaSemana(): Promise<void> {
-  const rows = await api.concluidasPorDia(7);
-  const hoje = dayKey();
-  semana.value = Array.from({ length: 7 }, (_, i) => rows.find((r) => r.dia === addDays(hoje, i - 6))?.n ?? 0);
+/** THIS WEEK: completed + sparkline of the last 7 days. */
+const week = ref<number[]>([0, 0, 0, 0, 0, 0, 0]);
+const completedThisWeek = computed(() => week.value.reduce((a, b) => a + b, 0));
+async function loadWeek(): Promise<void> {
+  const rows = await api.countCompletedByDay(7);
+  const today = dayKey();
+  week.value = Array.from({ length: 7 }, (_, i) => rows.find((r) => r.day === addDays(today, i - 6))?.n ?? 0);
 }
 
 onMounted(async () => {
   try {
-    // Projetos criados antes de a cor existir nasciam cinza. Conserto silencioso.
-    await api.pintaProjetosSemCor();
-    await carregaProjetos();
-    await Promise.all([carregaQuadro(), carregaDia(), carregaSemana()]);
-    await api.arquivaFeitos(14);   // faxina é silenciosa: ninguém pediu esse aviso
-    // O vault abre DEPOIS do quadro: indexar um vault grande não pode
-    // atrasar a tela que se usa primeiro de manhã.
-    // Plugins sobem DEPOIS do vault: os da comunidade moram dentro dele, e a
-    // confiança é por vault. Os de núcleo sobem mesmo sem vault aberto.
-    void abreVault()
-      .catch((e) => toast.aviso(`Vault indisponível: ${e instanceof Error ? e.message : String(e)}`))
-      .finally(() => iniciaPlugins());
-    const id = Number(new URLSearchParams(location.search).get('tarefa'));
-    if (id) abreDetalhe(id);
+    // Projects created before colors existed were born grey. Silent fix.
+    await api.backfillProjectColors();
+    await loadProjects();
+    await Promise.all([loadBoard(), loadDay(), loadWeek()]);
+    await api.archiveDoneTasks(14);   // cleanup is silent: nobody asked for that notice
+    // The vault opens AFTER the board: indexing a large vault must not
+    // delay the screen you use first thing in the morning.
+    // Plugins start AFTER the vault: community ones live inside it, and
+    // trust is per vault. Core ones start even with no vault open.
+    void openVault()
+      .catch((e) => toast.warning(`Vault unavailable: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => initPlugins());
+    const id = Number(new URLSearchParams(location.search).get('task'));
+    if (id) openTaskDetail(id);
   } catch (e) {
-    toast.erro(`Banco indisponível: ${e instanceof Error ? e.message : String(e)}`);
+    toast.error(`Database unavailable: ${e instanceof Error ? e.message : String(e)}`);
   }
 });
 </script>
@@ -180,134 +180,134 @@ onMounted(async () => {
                    max-[900px]:grid-cols-[8px] max-[900px]:justify-center"
             :class="route.path === r.path ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg'">
             <span class="h-1.5 w-1.5 rounded-full" :class="route.path === r.path ? 'bg-accent' : 'bg-rule-strong'" />
-            <span class="max-[900px]:hidden">{{ r.meta.titulo }}</span>
-            <span class="med text-[11px] text-fg-subtle max-[900px]:hidden">{{ contagem[r.path] || '' }}</span>
+            <span class="max-[900px]:hidden">{{ r.meta.title }}</span>
+            <span class="mono text-[11px] text-fg-subtle max-[900px]:hidden">{{ navCounts[r.path] || '' }}</span>
           </RouterLink>
         </nav>
 
-        <!-- ── projetos: separados da navegação por um rótulo de seção, senão
-             "Relatórios" e "Flyback rev C" parecem a mesma coisa ── -->
+        <!-- ── projects: separated from navigation by a section label, otherwise
+             "Reports" and "Flyback rev C" look like the same thing ── -->
         <div class="mt-5 px-3 max-[900px]:hidden">
           <div class="flex items-center gap-2 px-3 pb-1">
-            <span class="rot">Projetos</span>
+            <span class="label">Projects</span>
             <button class="ml-auto rounded p-0.5 text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
-              title="Novo projeto" @click="abreCriacaoProjeto">
+              title="New project" @click="startProjectCreation">
               <Plus class="h-3 w-3" />
             </button>
           </div>
 
-          <!-- linha nova em edição, com a cor já acesa -->
-          <div v-if="criandoProjeto"
+          <!-- new row in edit mode, with its color already lit -->
+          <div v-if="creatingProject"
             class="grid grid-cols-[10px_1fr] items-center gap-2.5 rounded-lg px-3 py-1">
-            <ChipProjeto variante="ponto" :cor="corDoNovo" />
-            <input ref="campoProjeto" v-model="nomeProjeto" spellcheck="false"
+            <ProjectChip variant="dot" :color="nextColor" />
+            <input ref="projectInput" v-model="newProjectName" spellcheck="false"
               class="w-full bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-subtle"
-              placeholder="nome do projeto"
-              @keydown.enter="confirmaProjeto"
-              @keydown.esc="criandoProjeto = false; nomeProjeto = ''"
-              @blur="criandoProjeto = false; nomeProjeto = ''">
+              placeholder="project name"
+              @keydown.enter="confirmProject"
+              @keydown.esc="creatingProject = false; newProjectName = ''"
+              @blur="creatingProject = false; newProjectName = ''">
           </div>
 
-          <!-- soltar um card do quadro aqui reatribui o projeto -->
-          <RouterLink v-for="p in projetosVisiveis" :key="p.id" :to="`/projeto/${p.id}`"
+          <!-- dropping a board card here reassigns its project -->
+          <RouterLink v-for="p in visibleProjects" :key="p.id" :to="`/project/${p.id}`"
             class="grid grid-cols-[10px_1fr_auto] items-center gap-2.5 rounded-lg px-3 py-1 text-[12px] transition-colors"
             :class="[
-              route.path === `/projeto/${p.id}` ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg',
-              alvoProjeto === p.id && arrastando ? 'ring-2 ring-inset ring-accent/60 bg-accent/10' : '',
+              route.path === `/project/${p.id}` ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg',
+              dropTargetProject === p.id && draggingTaskId ? 'ring-2 ring-inset ring-accent/60 bg-accent/10' : '',
             ]"
-            @dragover.prevent="alvoProjeto = p.id" @dragleave="alvoProjeto = null"
-            @drop.prevent="alvoProjeto = null; soltaEmProjeto(p.id)">
-            <ChipProjeto variante="ponto" :cor="p.color" />
+            @dragover.prevent="dropTargetProject = p.id" @dragleave="dropTargetProject = null"
+            @drop.prevent="dropTargetProject = null; dropOnProject(p.id)">
+            <ProjectChip variant="dot" :color="p.color" />
             <span class="truncate">{{ p.name }}</span>
-            <span v-if="p.abertas" class="med text-[11px] text-fg-subtle">{{ p.abertas }}</span>
+            <span v-if="p.open_count" class="mono text-[11px] text-fg-subtle">{{ p.open_count }}</span>
           </RouterLink>
 
-          <RouterLink v-if="projetos.length > 6" to="/projetos"
+          <RouterLink v-if="projects.length > 6" to="/projects"
             class="block px-3 py-1 font-mono text-[11px] text-fg-subtle hover:text-fg">
-            ⋯ ver todos ({{ projetos.length }})
+            ⋯ see all ({{ projects.length }})
           </RouterLink>
-          <RouterLink v-if="!projetos.length" to="/projetos"
+          <RouterLink v-if="!projects.length" to="/projects"
             class="block px-3 py-1 text-[12px] text-fg-subtle hover:text-fg">
-            criar o primeiro →
+            create the first one →
           </RouterLink>
         </div>
 
-        <!-- ── painéis de plugin: só aparece se algum plugin registrou um ── -->
-        <div v-if="paineis.length" class="mt-5 px-3 max-[900px]:hidden">
-          <div class="px-3 pb-1"><span class="rot">Plugins</span></div>
-          <RouterLink v-for="p in paineis" :key="`${p.plugin}/${p.id}`"
-            :to="{ name: 'plugin', params: { plugin: p.plugin, painel: p.id } }"
+        <!-- ── plugin panels: only shows up if some plugin registered one ── -->
+        <div v-if="panels.length" class="mt-5 px-3 max-[900px]:hidden">
+          <div class="px-3 pb-1"><span class="label">Plugins</span></div>
+          <RouterLink v-for="p in panels" :key="`${p.plugin}/${p.id}`"
+            :to="{ name: 'plugin', params: { plugin: p.plugin, panel: p.id } }"
             class="grid grid-cols-[12px_1fr] items-center gap-2.5 rounded-lg px-3 py-1 text-[12px] transition-colors"
-            :class="route.name === 'plugin' && route.params.plugin === p.plugin && route.params.painel === p.id
+            :class="route.name === 'plugin' && route.params.plugin === p.plugin && route.params.panel === p.id
               ? 'bg-surface-3/70 text-fg' : 'text-fg-muted hover:bg-surface-3/40 hover:text-fg'"
-            :title="p.nomePlugin">
+            :title="p.pluginName">
             <Puzzle class="h-3 w-3" />
-            <span class="truncate">{{ p.titulo }}</span>
+            <span class="truncate">{{ p.title }}</span>
           </RouterLink>
         </div>
       </div>
 
       <div class="mx-4 border-t border-rule pb-2 pt-4 max-[900px]:hidden">
-        <template v-if="rodando">
-          <div class="rot mb-1 flex items-center gap-1.5 !text-accent-ink">
+        <template v-if="running">
+          <div class="label mb-1 flex items-center gap-1.5 !text-accent-ink">
             <span class="relative flex h-1.5 w-1.5"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" /><span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" /></span>
-            rodando
+            running
           </div>
-          <div class="mb-1 line-clamp-2 text-[12px] leading-snug text-fg">{{ rodando.title }}</div>
+          <div class="mb-1 line-clamp-2 text-[12px] leading-snug text-fg">{{ running.title }}</div>
           <div class="flex items-center gap-2">
-            <span class="med text-[24px] leading-none text-accent-ink font-semibold tracking-[-0.02em]">{{ relogio }}</span>
-            <button class="btn btn-ghost btn-icone ml-auto" title="Pausar" @click="pausa"><Square class="h-3.5 w-3.5" /></button>
+            <span class="mono text-[24px] leading-none text-accent-ink font-semibold tracking-[-0.02em]">{{ clock }}</span>
+            <button class="btn btn-ghost btn-icon ml-auto" title="Pause" @click="pause"><Square class="h-3.5 w-3.5" /></button>
           </div>
         </template>
         <template v-else>
-          <div class="rot mb-1">últimos 7 dias</div>
+          <div class="label mb-1">last 7 days</div>
           <div class="flex items-baseline gap-2">
-            <span class="text-[32px] leading-none font-semibold tracking-[-0.02em]">{{ concluidasSemana }}</span>
-            <span class="text-[12px] text-fg-muted">{{ concluidasSemana === 1 ? 'tarefa concluída' : 'tarefas concluídas' }}</span>
+            <span class="text-[32px] leading-none font-semibold tracking-[-0.02em]">{{ completedThisWeek }}</span>
+            <span class="text-[12px] text-fg-muted">{{ completedThisWeek === 1 ? 'task completed' : 'tasks completed' }}</span>
           </div>
         </template>
         <div class="mt-3 flex h-6 items-end gap-1">
-          <div v-for="(n, i) in semana" :key="i" class="flex-1 rounded-[2px]"
+          <div v-for="(n, i) in week" :key="i" class="flex-1 rounded-[2px]"
             :class="i === 6 ? 'bg-accent' : 'bg-surface-3'"
-            :style="{ height: Math.max(3, (n / Math.max(1, ...semana)) * 24) + 'px' }" />
+            :style="{ height: Math.max(3, (n / Math.max(1, ...week)) * 24) + 'px' }" />
         </div>
       </div>
 
       <div class="flex items-center gap-1.5 px-5 pb-3 font-mono text-[11px] text-fg-subtle max-[900px]:hidden">
-        <RouterLink to="/ajustes" class="flex items-center gap-1 hover:text-fg">
-          <Settings class="h-3 w-3" />ajustes
+        <RouterLink to="/settings" class="flex items-center gap-1 hover:text-fg">
+          <Settings class="h-3 w-3" />settings
         </RouterLink>
-        <span class="ml-auto opacity-70">v{{ versao }}</span>
+        <span class="ml-auto opacity-70">v{{ appVersion }}</span>
       </div>
     </aside>
 
     <main class="flex min-w-0 flex-col overflow-hidden">
       <div class="flex h-14 flex-none items-center gap-3 border-b border-rule px-6">
-        <span class="truncate text-[16px] font-semibold tracking-[-0.01em]">{{ tituloTela }}</span>
-        <div v-if="rodando && route.path !== '/'" class="ml-auto flex items-center gap-2 text-[12px] text-fg-muted">
+        <span class="truncate text-[16px] font-semibold tracking-[-0.01em]">{{ screenTitle }}</span>
+        <div v-if="running && route.path !== '/'" class="ml-auto flex items-center gap-2 text-[12px] text-fg-muted">
           <span class="h-1.5 w-1.5 rounded-full bg-accent" />
-          <span class="max-w-[260px] truncate">{{ rodando.title }}</span>
-          <span class="med font-medium text-accent-ink">{{ relogio }}</span>
+          <span class="max-w-[260px] truncate">{{ running.title }}</span>
+          <span class="mono font-medium text-accent-ink">{{ clock }}</span>
         </div>
-        <!-- Antes este botão só navegava para /backlog. Agora ele cria. -->
-        <button class="btn btn-accent" :class="!(rodando && route.path !== '/') && 'ml-auto'"
-          @click="abreQuickAdd(projetoDaTela)">
-          <Plus class="h-3.5 w-3.5" />Nova tarefa
-          <span class="med ml-1 rounded bg-black/15 px-1 text-[11px] opacity-70">n</span>
+        <!-- This button used to just navigate to the capture screen. Now it creates. -->
+        <button class="btn btn-accent" :class="!(running && route.path !== '/') && 'ml-auto'"
+          @click="openQuickAdd(screenProjectId)">
+          <Plus class="h-3.5 w-3.5" />New task
+          <span class="mono ml-1 rounded bg-black/15 px-1 text-[11px] opacity-70">n</span>
         </button>
       </div>
 
-      <div v-if="esquecida" class="flex flex-none items-center gap-2.5 border-b border-warn/40 bg-warn/10 px-6 py-1.5 text-[12px]">
+      <div v-if="forgottenSession" class="flex flex-none items-center gap-2.5 border-b border-warn/40 bg-warn/10 px-6 py-1.5 text-[12px]">
         <AlertTriangle class="h-3.5 w-3.5 flex-none text-warn" />
-        <span>Esta sessão passa de 8 h — provavelmente ficou aberta da noite para o dia.</span>
-        <button class="btn ml-auto" @click="pausa">Encerrar agora</button>
+        <span>This session is over 8 h — it was probably left open overnight.</span>
+        <button class="btn ml-auto" @click="pause">Stop now</button>
       </div>
 
       <RouterView />
     </main>
 
     <QuickAdd v-if="quickAdd" />
-    <Paleta v-if="paleta" :key="paleta" />
+    <Palette v-if="palette" :key="palette" />
     <TaskDetail />
     <ToastHost />
   </div>

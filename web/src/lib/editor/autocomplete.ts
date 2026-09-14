@@ -1,39 +1,39 @@
-// Autocomplete de `[[`: a lista de notas aparece enquanto se digita o link.
+// `[[` autocomplete: the list of notes shows up while the link is being typed.
 //
-// É o que torna linkar mais barato que não linkar. Sem isto, escrever um link
-// exige lembrar o nome exato do arquivo — e ninguém lembra, então ninguém
-// linka, e o vault vira uma pilha de notas soltas.
+// This is what makes linking cheaper than not linking. Without it, writing a link
+// means remembering the exact file name — and nobody does, so nobody links,
+// and the vault turns into a pile of orphan notes.
 
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import type { EditorView } from '@codemirror/view';
 
-export interface OpcaoLink {
-  /** O que vai dentro do `[[ ]]` — o nome do arquivo, como o Obsidian grava. */
-  alvo: string;
-  /** Pasta, para desambiguar dois arquivos de mesmo nome. */
-  pasta: string;
+export interface LinkOption {
+  /** What goes inside the `[[ ]]` — the file name, the way Obsidian writes it. */
+  target: string;
+  /** Folder, to tell apart two files with the same name. */
+  folder: string;
 }
 
-export function completaLinks(fonte: () => OpcaoLink[]) {
+export function completeLinks(source: () => LinkOption[]) {
   return (ctx: CompletionContext): CompletionResult | null => {
     const m = ctx.matchBefore(/\[\[[^[\]|#\n]*$/);
     if (!m) return null;
     const from = m.from + 2;
-    const opcoes: Completion[] = fonte().map((o) => ({
-      label: o.alvo,
-      detail: o.pasta || undefined,
+    const options: Completion[] = source().map((o) => ({
+      label: o.target,
+      detail: o.folder || undefined,
       type: 'text',
       apply: (view: EditorView, c: Completion, f: number, t: number) => {
-        // O closeBrackets já pôs `]]` depois do cursor ao digitar `[[` —
-        // fechar de novo daria `[[Nota]]]]`.
-        const jaFecha = view.state.sliceDoc(t, t + 2) === ']]';
-        const texto = c.label + (jaFecha ? '' : ']]');
+        // closeBrackets already put `]]` after the cursor when `[[` was typed —
+        // closing again would give `[[Note]]]]`.
+        const alreadyClosed = view.state.sliceDoc(t, t + 2) === ']]';
+        const text = c.label + (alreadyClosed ? '' : ']]');
         view.dispatch({
-          changes: { from: f, to: t, insert: texto },
+          changes: { from: f, to: t, insert: text },
           selection: { anchor: f + c.label.length + 2 },
         });
       },
     }));
-    return { from, options: opcoes, validFor: /^[^[\]|#\n]*$/ };
+    return { from, options, validFor: /^[^[\]|#\n]*$/ };
   };
 }

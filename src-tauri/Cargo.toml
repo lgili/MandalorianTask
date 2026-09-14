@@ -1,7 +1,7 @@
 [package]
 name = "bancada"
 version = "0.1.0"
-description = "Bancada — registro de trabalho local-first"
+description = "Bancada — local-first work log: tasks, time and notes"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -14,20 +14,28 @@ tauri-plugin-sql = { version = "2.4.1", features = ["sqlite"] }
 tauri-plugin-dialog = "2.7.3"
 tauri-plugin-opener = "2.5.5"
 tauri-plugin-store = "2.4.4"
-# v0.3 — vault de notas. `watch` avisa quando o Obsidian (ou o git, ou o
-# Dropbox) mexe num .md por fora, para o índice não mentir.
+# v0.3 — notes vault. `watch` reports when Obsidian (or git, or Dropbox)
+# changes a .md from outside, so the index never lies.
 tauri-plugin-fs = { version = "2.5.2", features = ["watch"] }
-# A pasta do vault é escolhida pelo usuário no diálogo, e o diálogo só libera
-# o acesso enquanto o app está aberto. Sem isto, todo reinício pediria a pasta
-# de novo.
+# The vault folder is picked in the system dialog, and the dialog only grants
+# access while the app is open. Without this, every restart would ask for the
+# folder again.
 tauri-plugin-persisted-scope = "2.3.8"
 
-# v0.2 — Google Agenda. Descomente junto com os plugins em main.rs
-# e as permissões em capabilities/default.json.
+# v0.2 — Google Calendar. Uncomment together with the plugins in main.rs
+# and the permissions in capabilities/default.json.
 # tauri-plugin-http = "2.6.0"
 # tauri-plugin-oauth = "2.1.0"          # FabianLars; npm: @fabianlars/tauri-plugin-oauth
-# tauri-plugin-notification = "2.4.0"   # v0.4 — aviso de prazo
-# tauri-plugin-global-shortcut = "2.3.2" # v0.3 — captura rápida global
+# tauri-plugin-notification = "2.4.0"   # v0.4 — due-date alerts
+# tauri-plugin-global-shortcut = "2.3.2" # quick capture from anywhere
+
+[dev-dependencies]
+# Only for the migration tests: the SAME sqlx that tauri-plugin-sql uses, so
+# the tests run the real migrator over the bundled SQLite.
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "migrate"] }
+tokio = { version = "1", features = ["macros", "rt"] }
+# Same SHA-384 sqlx uses for migration checksums — already in the lockfile via sqlx.
+sha2 = "0.10"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

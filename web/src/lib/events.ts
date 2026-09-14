@@ -1,46 +1,46 @@
-// O que acontece no app, anunciado num lugar só.
+// What happens in the app, announced in one place.
 //
-// Existe por causa dos plugins: é por aqui que código de terceiro fica sabendo
-// que uma nota foi salva ou que uma sessão de trabalho começou, sem ninguém
-// importar store.ts ou mexer em ref interna. O app emite; plugin escuta.
+// It exists because of plugins: this is how third-party code finds out that a
+// note was saved or that a work session started, without anyone importing
+// store.ts or poking at an internal ref. The app emits; plugins listen.
 //
-// Os eventos de TEMPO são o que só o Bancada tem — nenhum outro app de notas
-// sabe quando você começou a trabalhar numa tarefa. É a API mais valiosa
-// que um plugin daqui pode ter.
+// The TIME events are what only Bancada has — no other notes app knows when
+// you started working on a task. It is the most valuable API a plugin here
+// can have.
 
-export interface Eventos {
-  'nota:aberta': { path: string };
-  'nota:salva': { path: string; texto: string };
-  'nota:criada': { path: string };
-  'nota:apagada': { path: string };
-  'nota:renomeada': { de: string; para: string };
-  /** Mudou POR FORA do app — Obsidian, git, Dropbox. O editor aberto recarrega. */
-  'nota:externa': { path: string };
-  'vault:sincronizado': { total: number };
-  'tarefa:criada': { id: number; titulo: string; projeto: number | null };
-  'tarefa:movida': { id: number; de: string | null; para: string };
-  'sessao:iniciada': { tarefa: number; titulo: string };
-  'sessao:encerrada': { tarefa: number | null };
+export interface AppEvents {
+  'note:opened': { path: string };
+  'note:saved': { path: string; text: string };
+  'note:created': { path: string };
+  'note:deleted': { path: string };
+  'note:renamed': { from: string; to: string };
+  /** Changed OUTSIDE the app — Obsidian, git, Dropbox. The open editor reloads. */
+  'note:external': { path: string };
+  'vault:synced': { total: number };
+  'task:created': { id: number; title: string; project: number | null };
+  'task:moved': { id: number; from: string | null; to: string };
+  'session:started': { task: number; title: string };
+  'session:stopped': { task: number | null };
 }
 
-export type NomeEvento = keyof Eventos;
-type Ouvinte<K extends NomeEvento> = (dado: Eventos[K]) => void;
+export type EventName = keyof AppEvents;
+type Listener<K extends EventName> = (payload: AppEvents[K]) => void;
 
-const ouvintes = new Map<NomeEvento, Set<Ouvinte<NomeEvento>>>();
+const listeners = new Map<EventName, Set<Listener<EventName>>>();
 
-/** Devolve a função que desinscreve — plugin que esquece de chamar vaza. */
-export function escuta<K extends NomeEvento>(nome: K, fn: Ouvinte<K>): () => void {
-  if (!ouvintes.has(nome)) ouvintes.set(nome, new Set());
-  ouvintes.get(nome)!.add(fn as Ouvinte<NomeEvento>);
-  return () => { ouvintes.get(nome)?.delete(fn as Ouvinte<NomeEvento>); };
+/** Returns the unsubscribe function — a plugin that forgets to call it leaks. */
+export function onEvent<K extends EventName>(name: K, fn: Listener<K>): () => void {
+  if (!listeners.has(name)) listeners.set(name, new Set());
+  listeners.get(name)!.add(fn as Listener<EventName>);
+  return () => { listeners.get(name)?.delete(fn as Listener<EventName>); };
 }
 
 /**
- * Um ouvinte que explode não pode derrubar o app nem calar os outros.
- * Plugin de terceiro com bug é o caso normal, não a exceção.
+ * A listener that blows up must not take down the app or silence the others.
+ * A buggy third-party plugin is the normal case, not the exception.
  */
-export function emite<K extends NomeEvento>(nome: K, dado: Eventos[K]): void {
-  for (const fn of ouvintes.get(nome) ?? []) {
-    try { fn(dado); } catch (e) { console.error(`[evento ${nome}]`, e); }
+export function emitEvent<K extends EventName>(name: K, payload: AppEvents[K]): void {
+  for (const fn of listeners.get(name) ?? []) {
+    try { fn(payload); } catch (e) { console.error(`[event ${name}]`, e); }
   }
 }

@@ -1,106 +1,106 @@
 <script setup lang="ts">
-// O painel do seletor de projeto. Não tem input próprio: quem digita é o pai
-// (a linha de captura, ou o campo de busca do popover). Assim o MESMO painel
-// serve o token `#` da captura e o seletor do detalhe da tarefa.
+// The project picker's panel. It has no input of its own: the parent does the
+// typing (the capture line, or the popover's search field). That way the SAME
+// panel serves the capture's `#` token and the task detail's picker.
 //
-// A regra que faz isto funcionar: a linha "criar" nunca vem pré-selecionada
-// quando há resultados. Enter rápido não pode fabricar projeto.
+// The rule that makes this work: the "create" row is never preselected
+// when there are results. A quick Enter must not fabricate a project.
 import { computed, ref, watch } from 'vue';
 import { Plus, Inbox } from 'lucide-vue-next';
-import ChipProjeto from './ProjectChip.vue';
+import ProjectChip from './ProjectChip.vue';
 import type { Project } from '../lib/types';
-import { podeCriar, ranqueia } from '../lib/projects';
-import { projetos } from '../lib/store';
+import { canCreateProject, rankProjects } from '../lib/projects';
+import { projects } from '../lib/store';
 
 const props = withDefaults(defineProps<{
-  consulta: string;
-  permiteCriar?: boolean;
-  /** Mostra "Caixa" (sem projeto) como primeira opção — para reatribuir. */
-  incluirCaixa?: boolean;
-}>(), { permiteCriar: true, incluirCaixa: false });
+  query: string;
+  allowCreate?: boolean;
+  /** Shows "Inbox" (no project) as the first option — for reassigning. */
+  includeInbox?: boolean;
+}>(), { allowCreate: true, includeInbox: false });
 
-const emit = defineEmits<{ escolhe: [Project | null]; cria: [string] }>();
+const emit = defineEmits<{ pick: [Project | null]; create: [string] }>();
 
 type Item =
-  | { tipo: 'caixa' }
-  | { tipo: 'projeto'; p: Project & { abertas?: number } }
-  | { tipo: 'criar'; nome: string };
+  | { kind: 'inbox' }
+  | { kind: 'project'; p: Project & { open_count?: number } }
+  | { kind: 'create'; name: string };
 
-const achados = computed(() => ranqueia(props.consulta, projetos.value));
+const ranked = computed(() => rankProjects(props.query, projects.value));
 
-const itens = computed<Item[]>(() => {
+const items = computed<Item[]>(() => {
   const out: Item[] = [];
-  if (props.incluirCaixa && !props.consulta.trim()) out.push({ tipo: 'caixa' });
-  for (const p of achados.value) out.push({ tipo: 'projeto', p });
-  if (props.permiteCriar && podeCriar(props.consulta, projetos.value)) {
-    out.push({ tipo: 'criar', nome: props.consulta.trim() });
+  if (props.includeInbox && !props.query.trim()) out.push({ kind: 'inbox' });
+  for (const p of ranked.value) out.push({ kind: 'project', p });
+  if (props.allowCreate && canCreateProject(props.query, projects.value)) {
+    out.push({ kind: 'create', name: props.query.trim() });
   }
   return out;
 });
 
-const indice = ref(0);
+const activeIndex = ref(0);
 
 /**
- * Onde o cursor pousa a cada nova consulta: no primeiro RESULTADO.
- * Só cai na linha de criar quando não há resultado nenhum — senão digitar
- * depressa e bater Enter criaria um projeto duplicado sem querer.
+ * Where the cursor lands on each new query: on the first RESULT.
+ * It only falls on the create row when there are no results at all — otherwise
+ * typing fast and hitting Enter would create a duplicate project by accident.
  */
-watch(itens, (lista) => {
-  const primeiro = lista.findIndex((i) => i.tipo !== 'criar');
-  indice.value = primeiro >= 0 ? primeiro : 0;
+watch(items, (list) => {
+  const first = list.findIndex((i) => i.kind !== 'create');
+  activeIndex.value = first >= 0 ? first : 0;
 }, { immediate: true });
 
-function mover(delta: number): void {
-  const n = itens.value.length;
+function move(delta: number): void {
+  const n = items.value.length;
   if (!n) return;
-  indice.value = (indice.value + delta + n) % n;
+  activeIndex.value = (activeIndex.value + delta + n) % n;
 }
 
-function escolhe(i: number): void {
-  const item = itens.value[i];
+function pick(i: number): void {
+  const item = items.value[i];
   if (!item) return;
-  if (item.tipo === 'criar') emit('cria', item.nome);
-  else if (item.tipo === 'caixa') emit('escolhe', null);
-  else emit('escolhe', item.p);
+  if (item.kind === 'create') emit('create', item.name);
+  else if (item.kind === 'inbox') emit('pick', null);
+  else emit('pick', item.p);
 }
 
-const confirma = (): void => escolhe(indice.value);
-const vazio = computed(() => itens.value.length === 0);
+const accept = (): void => pick(activeIndex.value);
+const isEmpty = computed(() => items.value.length === 0);
 
-defineExpose({ mover, confirma, vazio });
+defineExpose({ move, accept, isEmpty });
 </script>
 
 <template>
-  <div class="painel overflow-hidden shadow-pop">
+  <div class="panel overflow-hidden shadow-pop">
     <div class="max-h-[264px] overflow-y-auto py-1">
-      <p v-if="vazio" class="px-3 py-2.5 text-[12px] text-fg-subtle">
-        Nenhum projeto com esse nome.
+      <p v-if="isEmpty" class="px-3 py-2.5 text-[12px] text-fg-subtle">
+        No project by that name.
       </p>
 
-      <template v-for="(it, i) in itens" :key="it.tipo === 'projeto' ? it.p.id : it.tipo">
-        <div v-if="it.tipo === 'criar'" class="my-1 border-t border-rule" />
+      <template v-for="(it, i) in items" :key="it.kind === 'project' ? it.p.id : it.kind">
+        <div v-if="it.kind === 'create'" class="my-1 border-t border-rule" />
 
         <button type="button"
           class="flex h-8 w-full items-center gap-2.5 px-3 text-left transition-colors"
-          :class="i === indice ? 'bg-surface-3' : 'hover:bg-surface-3/50'"
-          @mouseenter="indice = i" @click="escolhe(i)">
+          :class="i === activeIndex ? 'bg-surface-3' : 'hover:bg-surface-3/50'"
+          @mouseenter="activeIndex = i" @click="pick(i)">
 
-          <template v-if="it.tipo === 'projeto'">
-            <ChipProjeto variante="ponto" :cor="it.p.color" />
-            <span class="med w-16 flex-none truncate text-[11px] text-fg-subtle">{{ it.p.code }}</span>
+          <template v-if="it.kind === 'project'">
+            <ProjectChip variant="dot" :color="it.p.color" />
+            <span class="mono w-16 flex-none truncate text-[11px] text-fg-subtle">{{ it.p.code }}</span>
             <span class="min-w-0 flex-1 truncate text-[14px]">{{ it.p.name }}</span>
-            <span v-if="it.p.abertas" class="med flex-none text-[11px] text-fg-subtle">{{ it.p.abertas }}</span>
+            <span v-if="it.p.open_count" class="mono flex-none text-[11px] text-fg-subtle">{{ it.p.open_count }}</span>
           </template>
 
-          <template v-else-if="it.tipo === 'caixa'">
+          <template v-else-if="it.kind === 'inbox'">
             <Inbox class="h-3.5 w-3.5 flex-none text-fg-subtle" />
-            <span class="min-w-0 flex-1 truncate text-[14px] text-fg-muted">Caixa — sem projeto</span>
+            <span class="min-w-0 flex-1 truncate text-[14px] text-fg-muted">Inbox — no project</span>
           </template>
 
           <template v-else>
             <Plus class="h-3.5 w-3.5 flex-none text-accent-ink" />
             <span class="min-w-0 flex-1 truncate text-[14px]">
-              Criar projeto <span class="font-medium text-accent-ink">{{ it.nome }}</span>
+              Create project <span class="font-medium text-accent-ink">{{ it.name }}</span>
             </span>
           </template>
         </button>
@@ -109,7 +109,7 @@ defineExpose({ mover, confirma, vazio });
 
     <div class="flex items-center gap-3 border-t border-rule bg-surface-2/60 px-3 py-1
                 font-mono text-[11px] text-fg-subtle">
-      <span>↑↓ navegar</span><span>⏎ escolher</span><span>esc texto puro</span>
+      <span>↑↓ navigate</span><span>⏎ pick</span><span>esc plain text</span>
     </div>
   </div>
 </template>

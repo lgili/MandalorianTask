@@ -4,8 +4,8 @@ import { WikiLink } from '../editor/wikilink';
 
 const parser = base.configure([GFM, WikiLink]);
 
-/** [nome, texto] de cada nó WikiLink e das marcas dele. */
-function nos(md: string): Array<[string, string]> {
+/** [name, text] of each WikiLink node and its marks. */
+function nodes(md: string): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   parser.parse(md).iterate({
     enter(n) {
@@ -15,42 +15,42 @@ function nos(md: string): Array<[string, string]> {
   return out;
 }
 
-describe('gramática do [[link]]', () => {
-  it('reconhece o link e as duas marcas', () => {
-    expect(nos('ver [[Snubber RCD]] hoje')).toEqual([
-      ['WikiLink', '[[Snubber RCD]]'],
+describe('[[link]] grammar', () => {
+  it('recognizes the link and both marks', () => {
+    expect(nodes('see [[RCD snubber]] today')).toEqual([
+      ['WikiLink', '[[RCD snubber]]'],
       ['WikiLinkMark', '[['],
       ['WikiLinkMark', ']]'],
     ]);
   });
 
-  it('apelido e seção ficam dentro do mesmo nó', () => {
-    expect(nos('[[Snubber#Dimensionamento|o snubber]]')[0]).toEqual(['WikiLink', '[[Snubber#Dimensionamento|o snubber]]']);
+  it('alias and section stay inside the same node', () => {
+    expect(nodes('[[Snubber#Sizing|the snubber]]')[0]).toEqual(['WikiLink', '[[Snubber#Sizing|the snubber]]']);
   });
 
-  it('embed com ! entra no nó, e a marca de abertura inclui o !', () => {
-    const r = nos('![[diagrama.png]]');
-    expect(r[0]).toEqual(['WikiLink', '![[diagrama.png]]']);
+  it('an embed with ! is part of the node, and the opening mark includes the !', () => {
+    const r = nodes('![[diagram.png]]');
+    expect(r[0]).toEqual(['WikiLink', '![[diagram.png]]']);
     expect(r[1]).toEqual(['WikiLinkMark', '![[']);
   });
 
-  it('dois links na mesma linha são dois nós', () => {
-    expect(nos('[[A]] e [[B]]').filter(([n]) => n === 'WikiLink').map(([, t]) => t)).toEqual(['[[A]]', '[[B]]']);
+  it('two links on the same line are two nodes', () => {
+    expect(nodes('[[A]] and [[B]]').filter(([n]) => n === 'WikiLink').map(([, t]) => t)).toEqual(['[[A]]', '[[B]]']);
   });
 
-  it('não reconhece vazio, nem link que atravessa linha', () => {
-    expect(nos('[[]]')).toEqual([]);
-    expect(nos('[[começa\ntermina]]')).toEqual([]);
+  it('does not recognize an empty link, nor a link that spans lines', () => {
+    expect(nodes('[[]]')).toEqual([]);
+    expect(nodes('[[starts\nends]]')).toEqual([]);
   });
 
-  it('não sequestra link markdown comum', () => {
-    const tipos: string[] = [];
-    parser.parse('[texto](http://x.com)').iterate({ enter(n) { tipos.push(n.name); } });
-    expect(tipos).toContain('Link');
-    expect(tipos).not.toContain('WikiLink');
+  it('does not hijack a regular markdown link', () => {
+    const types: string[] = [];
+    parser.parse('[text](http://x.com)').iterate({ enter(n) { types.push(n.name); } });
+    expect(types).toContain('Link');
+    expect(types).not.toContain('WikiLink');
   });
 
-  it('dentro de código não é link', () => {
-    expect(nos('`[[falso]]`')).toEqual([]);
+  it('inside code it is not a link', () => {
+    expect(nodes('`[[fake]]`')).toEqual([]);
   });
 });

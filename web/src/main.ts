@@ -4,7 +4,7 @@ import { router } from './router';
 import { initTheme } from './lib/theme';
 import './style.css';
 
-// Antes do mount: senão a janela pisca branco na abertura.
+// Before mount: otherwise the window flashes white when it opens.
 initTheme();
 
 createApp(App).use(router).mount('#app');

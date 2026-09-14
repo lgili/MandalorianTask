@@ -1,150 +1,150 @@
-// Monta o objeto `bancada` que CADA plugin recebe.
+// Builds the `bancada` object that EACH plugin receives.
 //
-// Uma instância por plugin, e cada coisa registrada por ela entra na lista de
-// descartes daquele plugin. Desligar o plugin é percorrer essa lista — nenhum
-// comando órfão na paleta, nenhum ouvinte vazando, nenhum CSS sobrando. É o
-// `this.register*` do Obsidian, mas sem o plugin precisar lembrar de chamar.
+// One instance per plugin, and everything registered through it goes into
+// that plugin's list of disposers. Disabling the plugin is walking that list —
+// no orphan command in the palette, no leaking listener, no leftover CSS. It is
+// Obsidian's `this.register*`, but without the plugin having to remember to call it.
 
 import { shallowRef } from 'vue';
 import * as cmView from '@codemirror/view';
 import * as cmState from '@codemirror/state';
 import * as cmLanguage from '@codemirror/language';
-import type { NotaResumo, Project, SessionCard, TaskCard } from '../types';
+import type { NoteSummary, Project, SessionCard, TaskCard } from '../types';
 import type {
-  Bancada, Ligacao, Manifesto, NotaInfo, PainelPlugin, ProjetoInfo, SessaoInfo, TarefaInfo,
+  Bancada, Link, NoteInfo, PluginManifest, PluginPanel, ProjectInfo, SessionInfo, TaskInfo,
 } from './types';
-import { VERSAO_API } from './types';
+import { API_VERSION } from './types';
 import * as api from '../db';
 import * as vault from '../vault';
 import { router } from '../../router';
-import { abreDetalhe, move, projetos, recarregaTudo, rodando, tarefas } from '../store';
-import { criaNota, notaAberta, notas, resolve, salvaNota } from '../notes';
-import { executaComando, registraComando } from '../commands';
-import { emite, escuta, type NomeEvento } from '../events';
-import { registraExtensao } from '../editor/extensions';
+import { move, openTaskDetail, projects, reloadAll, running, tasks } from '../store';
+import { activeNote, createNote, notes, resolve, saveNote } from '../notes';
+import { registerCommand, runCommand } from '../commands';
+import { emitEvent, onEvent, type EventName } from '../events';
+import { registerExtension } from '../editor/extensions';
 import { dayKey } from '../time';
 import { toast } from '../toast';
 
-/** Painéis registrados por plugins — a barra lateral e a rota /plugin leem isto. */
-export interface PainelRegistrado extends PainelPlugin { plugin: string; nomePlugin: string }
-export const paineis = shallowRef<PainelRegistrado[]>([]);
+/** Panels registered by plugins — the sidebar and the /plugin route read this. */
+export interface RegisteredPanel extends PluginPanel { plugin: string; pluginName: string }
+export const panels = shallowRef<RegisteredPanel[]>([]);
 
-// ── tradução interno -> contrato ───────────────────────────────────────────
+// ── translation internal -> contract ───────────────────────────────────────
 
-const nota = (n: NotaResumo): NotaInfo => ({
-  path: n.path, titulo: n.title, editadaEm: n.mtime, projeto: n.project_id, tags: n.tags,
+const toNoteInfo = (n: NoteSummary): NoteInfo => ({
+  path: n.path, title: n.title, modifiedAt: n.mtime, project: n.project_id, tags: n.tags,
 });
-const tarefa = (t: TaskCard): TarefaInfo => ({
-  id: t.id, titulo: t.title, status: t.status, projeto: t.project_id,
-  minutos: t.minutos, prazo: t.due_at, criadaEm: t.created_at,
+const toTaskInfo = (t: TaskCard): TaskInfo => ({
+  id: t.id, title: t.title, status: t.status, project: t.project_id,
+  minutes: t.minutes, due: t.due_at, createdAt: t.created_at,
 });
-const projeto = (p: Project): ProjetoInfo => ({ id: p.id, nome: p.name, codigo: p.code, cor: p.color });
-const sessao = (s: SessionCard): SessaoInfo => ({
-  tarefa: s.task_id, titulo: s.title,
-  projeto: tarefas.value.find((t) => t.id === s.task_id)?.project_id ?? null,
-  inicio: s.started_at, fim: s.ended_at,
+const toProjectInfo = (p: Project): ProjectInfo => ({ id: p.id, name: p.name, code: p.code, color: p.color });
+const toSessionInfo = (s: SessionCard): SessionInfo => ({
+  task: s.task_id, title: s.title,
+  project: tasks.value.find((t) => t.id === s.task_id)?.project_id ?? null,
+  start: s.started_at, end: s.ended_at,
 });
 
-/** Caminho vindo de plugin: relativo, com '/', sem subir de pasta. */
-function caminhoSeguro(path: string): string {
+/** Path coming from a plugin: relative, with '/', never climbing out of a folder. */
+function safePath(path: string): string {
   const p = path.replace(/\\/g, '/').replace(/^\/+/, '');
-  if (!p || p.split('/').some((seg) => seg === '..')) throw new Error(`Caminho inválido: ${path}`);
+  if (!p || p.split('/').some((seg) => seg === '..')) throw new Error(`Invalid path: ${path}`);
   return p;
 }
 
-export function criaApi(m: Manifesto, descartes: Array<() => void>): Bancada {
-  const guarda = (f: () => void) => { descartes.push(f); };
-  const pastaDados = `.bancada/plugins/${m.id}/data.json`;
+export function createPluginApi(m: PluginManifest, disposers: Array<() => void>): Bancada {
+  const track = (f: () => void) => { disposers.push(f); };
+  const dataFile = `.bancada/plugins/${m.id}/data.json`;
 
   return {
-    versaoApi: VERSAO_API,
-    plugin: { id: m.id, nome: m.nome },
+    apiVersion: API_VERSION,
+    plugin: { id: m.id, name: m.name },
 
-    comandos: {
-      adiciona(c) {
-        guarda(registraComando({ id: `${m.id}:${c.id}`, nome: c.nome, dono: m.nome, executa: c.executa }));
+    commands: {
+      add(c) {
+        track(registerCommand({ id: `${m.id}:${c.id}`, name: c.name, owner: m.name, run: c.run }));
       },
-      executa: (id) => executaComando(id),
+      run: (id) => runCommand(id),
     },
 
-    eventos: {
-      escuta(nome, fn) {
-        guarda(escuta(nome as NomeEvento, fn as never));
+    events: {
+      on(name, fn) {
+        track(onEvent(name as EventName, fn as never));
       },
     },
 
-    notas: {
-      lista: () => notas.value.map(nota),
-      le: (path) => vault.le(caminhoSeguro(path)),
-      escreve: (path, texto) => salvaNota(caminhoSeguro(path), texto),
-      cria: (titulo, op) => criaNota(titulo, op),
-      existe: (path) => vault.existe(caminhoSeguro(path)),
-      abre: (path) => { void router.push({ name: 'notas', query: { n: caminhoSeguro(path) } }); },
-      aberta: () => notaAberta.value,
-      busca: async (termo) => (await api.buscaNotas(termo, 50)).map((r) => ({ path: r.path, titulo: r.title })),
-      async ligacoes(): Promise<Ligacao[]> {
-        return (await api.todasAsLigacoes()).map((l) => ({ de: l.src, alvo: l.target, para: resolve(l.target)?.path ?? null }));
+    notes: {
+      list: () => notes.value.map(toNoteInfo),
+      read: (path) => vault.readFile(safePath(path)),
+      write: (path, text) => saveNote(safePath(path), text),
+      create: (title, options) => createNote(title, options),
+      exists: (path) => vault.fileExists(safePath(path)),
+      open: (path) => { void router.push({ name: 'notes', query: { note: safePath(path) } }); },
+      active: () => activeNote.value,
+      search: async (term) => (await api.searchNotes(term, 50)).map((r) => ({ path: r.path, title: r.title })),
+      async links(): Promise<Link[]> {
+        return (await api.listAllLinks()).map((l) => ({ from: l.src, target: l.target, to: resolve(l.target)?.path ?? null }));
       },
-      resolve: (alvo) => resolve(alvo)?.path ?? null,
+      resolve: (target) => resolve(target)?.path ?? null,
     },
 
-    tarefas: {
-      lista: () => tarefas.value.map(tarefa),
-      async cria(t) {
-        const id = await api.capturaTarefa(t.titulo, t.projeto ?? null, 'trabalho', t.prazo ?? null);
+    tasks: {
+      list: () => tasks.value.map(toTaskInfo),
+      async create(t) {
+        const id = await api.captureTask(t.title, t.project ?? null, 'work', t.due ?? null);
         if (t.status && t.status !== 'backlog') await api.moveTask(id, t.status);
-        await recarregaTudo();
-        emite('tarefa:criada', { id, titulo: t.titulo, projeto: t.projeto ?? null });
+        await reloadAll();
+        emitEvent('task:created', { id, title: t.title, project: t.project ?? null });
         return id;
       },
-      move: (id, para) => move(id, para),
-      abre: (id) => abreDetalhe(id),
-      rodando: () => (rodando.value ? sessao(rodando.value) : null),
-      sessoesDoDia: async (dia) => (await api.sessoesDoDia(dia ?? dayKey())).map(sessao),
+      move: (id, to) => move(id, to),
+      open: (id) => openTaskDetail(id),
+      running: () => (running.value ? toSessionInfo(running.value) : null),
+      sessionsOn: async (day) => (await api.listDaySessions(day ?? dayKey())).map(toSessionInfo),
     },
 
-    projetos: {
-      lista: () => projetos.value.map(projeto),
+    projects: {
+      list: () => projects.value.map(toProjectInfo),
     },
 
     editor: {
-      registraExtensao(ext) {
-        guarda(registraExtensao(m.id, ext as cmState.Extension));
+      registerExtension(ext) {
+        track(registerExtension(m.id, ext as cmState.Extension));
       },
     },
 
     cm: { view: cmView, state: cmState, language: cmLanguage },
 
     ui: {
-      toast(msg, tom = 'ok') {
-        (tom === 'erro' ? toast.erro : tom === 'aviso' ? toast.aviso : toast.ok)(msg);
+      notice(msg, tone = 'ok') {
+        (tone === 'error' ? toast.error : tone === 'warning' ? toast.warning : toast.ok)(msg);
       },
-      adicionaPainel(p) {
-        const item: PainelRegistrado = { ...p, plugin: m.id, nomePlugin: m.nome };
-        paineis.value = [...paineis.value.filter((x) => !(x.plugin === m.id && x.id === p.id)), item];
-        guarda(() => { paineis.value = paineis.value.filter((x) => x !== item); });
+      addPanel(p) {
+        const item: RegisteredPanel = { ...p, plugin: m.id, pluginName: m.name };
+        panels.value = [...panels.value.filter((x) => !(x.plugin === m.id && x.id === p.id)), item];
+        track(() => { panels.value = panels.value.filter((x) => x !== item); });
       },
-      abrePainel(id) {
-        void router.push({ name: 'plugin', params: { plugin: m.id, painel: id } });
+      openPanel(id) {
+        void router.push({ name: 'plugin', params: { plugin: m.id, panel: id } });
       },
-      adicionaEstilo(css) {
+      addStyle(css) {
         const el = document.createElement('style');
         el.dataset.plugin = m.id;
         el.textContent = css;
         document.head.appendChild(el);
-        guarda(() => el.remove());
+        track(() => el.remove());
       },
     },
 
-    dados: {
-      async carrega<T>(): Promise<T | null> {
-        const t = await vault.leArquivoInterno(pastaDados);
+    data: {
+      async load<T>(): Promise<T | null> {
+        const t = await vault.readInternalFile(dataFile);
         if (!t) return null;
         try { return JSON.parse(t) as T; } catch { return null; }
       },
-      salva: (d) => vault.escreveArquivoInterno(pastaDados, JSON.stringify(d, null, 2)),
+      save: (d) => vault.writeInternalFile(dataFile, JSON.stringify(d, null, 2)),
     },
 
-    aoDesligar: guarda,
+    onUnload: track,
   };
 }

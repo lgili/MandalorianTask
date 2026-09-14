@@ -1,83 +1,83 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Clock, Repeat, Play, Pause, Check } from 'lucide-vue-next';
-import ChipProjeto from './ProjectChip.vue';
+import ProjectChip from './ProjectChip.vue';
 import type { TaskCard } from '../lib/types';
 import { fmtHM } from '../lib/time';
-import { agora, decorrido, minutosDecorridos } from '../lib/clock';
-import { abreDetalhe } from '../lib/store';
+import { now, fmtElapsed, elapsedMinutes } from '../lib/clock';
+import { openTaskDetail } from '../lib/store';
 
-const props = defineProps<{ card: TaskCard; rodandoDesde?: string | null }>();
-const emit = defineEmits<{ iniciar: [id: number]; pausar: []; concluir: [id: number] }>();
+const props = defineProps<{ card: TaskCard; runningSince?: string | null }>();
+const emit = defineEmits<{ start: [id: number]; pause: []; complete: [id: number] }>();
 
-const tempo = computed(() => props.rodandoDesde
-  ? fmtHM(props.card.minutos + minutosDecorridos(props.rodandoDesde, agora.value))
-  : fmtHM(props.card.minutos));
-const relogio = computed(() => props.rodandoDesde ? decorrido(props.rodandoDesde, agora.value) : null);
+const totalTime = computed(() => props.runningSince
+  ? fmtHM(props.card.minutes + elapsedMinutes(props.runningSince, now.value))
+  : fmtHM(props.card.minutes));
+const clock = computed(() => props.runningSince ? fmtElapsed(props.runningSince, now.value) : null);
 
-const dias = computed(() => {
+const daysLeft = computed(() => {
   if (!props.card.due_at) return null;
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   const d = new Date(props.card.due_at); d.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - hoje.getTime()) / 86400000);
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
 });
-const prazo = computed(() => {
-  const n = dias.value;
+const due = computed(() => {
+  const n = daysLeft.value;
   if (n === null) return null;
-  if (n < 0) return `${-n}d atrasado`;
-  if (n === 0) return 'hoje';
-  if (n === 1) return 'amanhã';
+  if (n < 0) return `${-n}d overdue`;
+  if (n === 0) return 'today';
+  if (n === 1) return 'tomorrow';
   if (n <= 6) return `${n}d`;
-  return new Date(props.card.due_at!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  return new Date(props.card.due_at!).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
 });
 </script>
 
 <template>
   <div class="group relative cursor-grab rounded-xl border bg-surface p-3 transition-[transform,box-shadow,border-color]
               hover:-translate-y-px hover:shadow-pop active:cursor-grabbing"
-    :class="rodandoDesde ? 'border-accent/60 shadow-live' : 'border-rule hover:border-rule-strong'">
+    :class="runningSince ? 'border-accent/60 shadow-live' : 'border-rule hover:border-rule-strong'">
 
-    <!-- brilho de fundo do que está rodando -->
-    <div v-if="rodandoDesde" class="pointer-events-none absolute inset-0 rounded-xl bg-accent/[0.06]" />
+    <!-- background glow on whatever is running -->
+    <div v-if="runningSince" class="pointer-events-none absolute inset-0 rounded-xl bg-accent/[0.06]" />
 
     <div class="relative flex items-start gap-2">
       <span class="mt-[5px] flex-none">
-        <ChipProjeto variante="ponto" tamanho="md" :cor="card.project_color" />
+        <ProjectChip variant="dot" size="md" :color="card.project_color" />
       </span>
       <div class="min-w-0 flex-1">
         <button class="line-clamp-2 text-left text-[14px] font-semibold leading-[1.35] tracking-[-0.01em] hover:text-accent-ink"
-                @click.stop="abreDetalhe(card.id)">{{ card.title }}</button>
-        <div v-if="card.origem_title" class="mt-0.5 truncate text-[11px] text-fg-subtle">
-          de {{ card.origem_title }}
+                @click.stop="openTaskDetail(card.id)">{{ card.title }}</button>
+        <div v-if="card.origin_title" class="mt-0.5 truncate text-[11px] text-fg-subtle">
+          from {{ card.origin_title }}
         </div>
       </div>
 
-      <!-- ações: aparecem no hover; a de rodando é permanente -->
+      <!-- actions: they show on hover; the running one is always visible -->
       <div class="flex flex-none items-center gap-0.5 -mr-1 -mt-1"
-           :class="rodandoDesde ? '' : 'opacity-0 transition-opacity group-hover:opacity-100'">
-        <button v-if="rodandoDesde" class="btn btn-ghost btn-icone !text-vivo-ink" title="Pausar"
-                @click.stop="emit('pausar')"><Pause class="h-3.5 w-3.5" /></button>
-        <button v-else class="btn btn-ghost btn-icone" title="Começar agora"
-                @click.stop="emit('iniciar', card.id)"><Play class="h-3.5 w-3.5" /></button>
-        <button v-if="card.status !== 'feito'" class="btn btn-ghost btn-icone" title="Concluir"
-                @click.stop="emit('concluir', card.id)"><Check class="h-3.5 w-3.5" /></button>
+           :class="runningSince ? '' : 'opacity-0 transition-opacity group-hover:opacity-100'">
+        <button v-if="runningSince" class="btn btn-ghost btn-icon !text-live-ink" title="Pause"
+                @click.stop="emit('pause')"><Pause class="h-3.5 w-3.5" /></button>
+        <button v-else class="btn btn-ghost btn-icon" title="Start now"
+                @click.stop="emit('start', card.id)"><Play class="h-3.5 w-3.5" /></button>
+        <button v-if="card.status !== 'done'" class="btn btn-ghost btn-icon" title="Complete"
+                @click.stop="emit('complete', card.id)"><Check class="h-3.5 w-3.5" /></button>
       </div>
     </div>
 
     <div class="relative mt-2.5 flex items-center gap-2 font-mono text-[11px] text-fg-subtle">
-      <ChipProjeto v-if="card.project_id" :codigo="card.project_code" :nome="card.project_name"
-        :cor="card.project_color" />
-      <span v-if="card.kind === 'reuniao'" class="chip bg-reuniao/15 text-reuniao">reunião</span>
+      <ProjectChip v-if="card.project_id" :code="card.project_code" :name="card.project_name"
+        :color="card.project_color" />
+      <span v-if="card.kind === 'meeting'" class="chip bg-meeting/15 text-meeting">meeting</span>
       <span v-else-if="card.kind === 'admin'" class="chip bg-surface-3 text-fg-muted">admin</span>
-      <span v-if="prazo" class="flex items-center gap-1 font-medium"
-        :class="dias !== null && dias <= 1 ? 'text-danger' : 'text-warn'">
-        <Clock class="h-3 w-3" />{{ prazo }}
+      <span v-if="due" class="flex items-center gap-1 font-medium"
+        :class="daysLeft !== null && daysLeft <= 1 ? 'text-danger' : 'text-warn'">
+        <Clock class="h-3 w-3" />{{ due }}
       </span>
-      <span v-if="card.sessoes > 2" class="flex items-center gap-0.5" :title="`${card.sessoes} sessões`">
-        <Repeat class="h-3 w-3" />{{ card.sessoes }}
+      <span v-if="card.session_count > 2" class="flex items-center gap-0.5" :title="`${card.session_count} sessions`">
+        <Repeat class="h-3 w-3" />{{ card.session_count }}
       </span>
       <span class="ml-auto text-[12px] font-semibold leading-none"
-        :class="rodandoDesde ? 'text-vivo-ink' : 'text-fg-muted'">{{ relogio ?? tempo }}</span>
+        :class="runningSince ? 'text-live-ink' : 'text-fg-muted'">{{ clock ?? totalTime }}</span>
     </div>
   </div>
 </template>

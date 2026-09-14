@@ -1,8 +1,8 @@
 {
-  "id": "destaca-todo",
-  "nome": "Destaca TODO",
-  "versao": "1.0.0",
-  "descricao": "Pinta TODO, FIXME e PERGUNTA no editor, e junta todos numa nota de pendências.",
-  "autor": "exemplo do Bancada",
-  "apiMinima": "1.0.0"
+  "id": "highlight-todo",
+  "name": "Highlight TODO",
+  "version": "1.0.0",
+  "description": "Highlights TODO, FIXME and QUESTION in the editor, and gathers them into an open-items note.",
+  "author": "Bancada example",
+  "minApiVersion": "1.0.0"
 }

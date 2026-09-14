@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Popula o banco com dados de exemplo para avaliar o app com conteúdo real.
-// Ferramenta de desenvolvimento — não vai junto no bundle.
+// Fills the database with sample data so the app can be judged with real content.
+// Development tool — it does not ship in the bundle.
 //
-//   pnpm seed            # recusa se já houver dados
-//   pnpm seed --force    # apaga tudo e refaz
+//   pnpm seed            # refuses if there is already data
+//   pnpm seed --force    # deletes everything and rebuilds
 //
-// Sem dependências: node:sqlite é embutido no Node 22+.
+// No dependencies: node:sqlite is built into Node 22+.
 
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync } from 'node:fs';
@@ -14,230 +14,243 @@ import { join } from 'node:path';
 
 const ID = 'com.lgili.bancada';
 
-function caminhoBanco() {
+function dbPath() {
   if (platform() === 'darwin') return join(homedir(), 'Library', 'Application Support', ID, 'bancada.db');
   if (platform() === 'win32') return join(process.env.APPDATA ?? '', ID, 'bancada.db');
   return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), ID, 'bancada.db');
 }
 
 const FORCE = process.argv.includes('--force');
-const arquivo = caminhoBanco();
+const dbFile = dbPath();
 
-if (!existsSync(arquivo)) {
-  console.error(`Banco não encontrado em:\n  ${arquivo}\n\n` +
-    'Rode o app uma vez (pnpm dev) para as migrations criarem o schema, depois rode o seed.');
+if (!existsSync(dbFile)) {
+  console.error(`Database not found at:\n  ${dbFile}\n\n` +
+    'Run the app once (pnpm dev) so the migrations create the schema, then run the seed.');
   process.exit(1);
 }
 
-const db = new DatabaseSync(arquivo);
+const db = new DatabaseSync(dbFile);
 db.exec('PRAGMA foreign_keys = ON');
 
-const conta = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
-const jaTem = conta('tasks') + conta('projects');
+// The seed writes the v4 schema (English values and column names). A database
+// the app created before v4 would take the projects and then fail on the first
+// task, leaving it half-seeded — so check first.
+let schemaVersion = 0;
+try {
+  schemaVersion = db.prepare('SELECT MAX(version) AS v FROM _sqlx_migrations').get().v ?? 0;
+} catch { /* no migrations table yet */ }
+if (schemaVersion < 4) {
+  console.error(`The database schema is at migration v${schemaVersion}; the seed needs v4.\n` +
+    'Run the app once (pnpm dev) so the migrations upgrade it, then run the seed.');
+  process.exit(1);
+}
 
-if (jaTem > 0 && !FORCE) {
-  console.error(`O banco já tem ${conta('projects')} projeto(s) e ${conta('tasks')} tarefa(s).\n` +
-    'Use --force para apagar e refazer, ou apague o arquivo manualmente.');
+const count = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
+const existing = count('tasks') + count('projects');
+
+if (existing > 0 && !FORCE) {
+  console.error(`The database already has ${count('projects')} project(s) and ${count('tasks')} task(s).\n` +
+    'Use --force to delete and rebuild, or delete the file manually.');
   process.exit(1);
 }
 if (FORCE) {
   db.exec('DELETE FROM sessions; DELETE FROM transitions; DELETE FROM tasks; DELETE FROM projects;');
 }
 
-// ── tempo ──────────────────────────────────────────────────────────────────
+// ── time ───────────────────────────────────────────────────────────────────
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
-const AGORA = new Date();
+const NOW = new Date();
 const iso = (d) => d.toISOString();
-/** Data local a N dias atrás, na hora/minuto pedidos. */
-function em(diasAtras, hora, min = 0) {
-  const d = new Date(AGORA);
-  d.setDate(d.getDate() - diasAtras);
-  d.setHours(hora, min, 0, 0);
+/** Local date N days ago, at the given hour/minute. */
+function at(daysAgo, hour, min = 0) {
+  const d = new Date(NOW);
+  d.setDate(d.getDate() - daysAgo);
+  d.setHours(hour, min, 0, 0);
   return d;
 }
-const ehFimDeSemana = (d) => d.getDay() === 0 || d.getDay() === 6;
+const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6;
 
-// gerador determinístico: rodar duas vezes dá o mesmo banco
-let semente = 20260909;
-const rnd = () => (semente = (semente * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-const escolhe = (a) => a[Math.floor(rnd() * a.length)];
+// deterministic generator: running it twice gives the same database
+let seed = 20260909;
+const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+const pick = (a) => a[Math.floor(rnd() * a.length)];
 
-// ── projetos ───────────────────────────────────────────────────────────────
-const projeto = db.prepare(
+// ── projects ───────────────────────────────────────────────────────────────
+const insProject = db.prepare(
   `INSERT INTO projects (name, code, color, created_at) VALUES (?,?,?,?)`);
 const PROJ = {};
-for (const [nome, cod, cor] of [
+for (const [name, code, color] of [
   ['Flyback rev C', 'CF03B04', null],
   ['NACQ 2026', 'NACQ', null],
-  ['Bancada e infra', 'INFRA', null],
-]) PROJ[cod] = Number(projeto.run(nome, cod, cor, iso(em(60, 9))).lastInsertRowid);
+  ['Lab bench and infra', 'INFRA', null],
+]) PROJ[code] = Number(insProject.run(name, code, color, iso(at(60, 9))).lastInsertRowid);
 
-// ── tarefas ────────────────────────────────────────────────────────────────
+// ── tasks ──────────────────────────────────────────────────────────────────
 const insTask = db.prepare(
   `INSERT INTO tasks (project_id, title, kind, status, pos, due_at, created_at,
-                      origem_id, queued_at, started_at, done_at)
+                      origin_id, queued_at, started_at, done_at)
    VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
-const insTrans = db.prepare(`INSERT INTO transitions (task_id, de, para, at) VALUES (?,?,?,?)`);
+const insTrans = db.prepare(`INSERT INTO transitions (task_id, from_status, to_status, at) VALUES (?,?,?,?)`);
 const insSess = db.prepare(
   `INSERT INTO sessions (task_id, started_at, ended_at, tz, source, note, created_at)
    VALUES (?,?,?,?,?,?,?)`);
 
 let pos = 0;
-function tarefa({ proj = null, titulo, kind = 'trabalho', status = 'backlog',
-                  prazo = null, criada, origem = null, fila = null, inicio = null, fim = null }) {
+function task({ proj = null, title, kind = 'work', status = 'backlog',
+                due = null, created, origin = null, queued = null, started = null, done = null }) {
   const id = Number(insTask.run(
-    proj ? PROJ[proj] : null, titulo, kind, status, pos++,
-    prazo ? iso(prazo) : null, iso(criada), origem,
-    fila ? iso(fila) : null, inicio ? iso(inicio) : null, fim ? iso(fim) : null,
+    proj ? PROJ[proj] : null, title, kind, status, pos++,
+    due ? iso(due) : null, iso(created), origin,
+    queued ? iso(queued) : null, started ? iso(started) : null, done ? iso(done) : null,
   ).lastInsertRowid);
-  insTrans.run(id, null, 'backlog', iso(criada));
-  if (fila) insTrans.run(id, 'backlog', 'fila', iso(fila));
-  if (inicio) insTrans.run(id, 'fila', 'fazendo', iso(inicio));
-  if (fim) insTrans.run(id, 'fazendo', 'feito', iso(fim));
+  insTrans.run(id, null, 'backlog', iso(created));
+  if (queued) insTrans.run(id, 'backlog', 'queued', iso(queued));
+  if (started) insTrans.run(id, 'queued', 'doing', iso(started));
+  if (done) insTrans.run(id, 'doing', 'done', iso(done));
   return id;
 }
 
-function sessao(taskId, inicio, minutos, source = 'auto') {
-  const fim = new Date(inicio.getTime() + minutos * 60000);
-  insSess.run(taskId, iso(inicio), iso(fim), TZ, source, null, iso(inicio));
+function session(taskId, start, minutes, source = 'auto') {
+  const end = new Date(start.getTime() + minutes * 60000);
+  insSess.run(taskId, iso(start), iso(end), TZ, source, null, iso(start));
 }
 
-// ── reuniões recorrentes: são o contexto de captura do backlog ──────────────
-const dfmea = tarefa({
-  proj: 'CF03B04', titulo: 'Revisão DFMEA — Flyback rev C', kind: 'reuniao',
-  status: 'feito', criada: em(9, 8, 30), fila: em(9, 8, 30),
-  inicio: em(9, 14), fim: em(9, 15),
+// ── recurring meetings: they are the capture context for the backlog ───────
+const dfmea = task({
+  proj: 'CF03B04', title: 'DFMEA review — Flyback rev C', kind: 'meeting',
+  status: 'done', created: at(9, 8, 30), queued: at(9, 8, 30),
+  started: at(9, 14), done: at(9, 15),
 });
-sessao(dfmea, em(9, 14), 60);
+session(dfmea, at(9, 14), 60);
 
-const compras = tarefa({
-  proj: 'NACQ', titulo: 'Alinhamento semanal com compras', kind: 'reuniao',
-  status: 'feito', criada: em(2, 9), fila: em(2, 9),
-  inicio: em(2, 11), fim: em(2, 11, 40),
+const purchasing = task({
+  proj: 'NACQ', title: 'Weekly sync with purchasing', kind: 'meeting',
+  status: 'done', created: at(2, 9), queued: at(2, 9),
+  started: at(2, 11), done: at(2, 11, 40),
 });
-sessao(compras, em(2, 11), 40);
+session(purchasing, at(2, 11), 40);
 
-// ── backlog: o que saiu daquelas reuniões, com o contexto preservado ────────
+// ── backlog: what came out of those meetings, with the context preserved ───
 for (const t of [
-  'medir ripple no barramento 400 V com ponteira diferencial',
-  'conferir derating do capacitor de saída a 85 °C',
-  'adicionar teste de continuidade do snubber no ATE',
-]) tarefa({ proj: 'CF03B04', titulo: t, criada: em(9, 14, 20 + Math.floor(rnd() * 30)), origem: dfmea });
+  'measure ripple on the 400 V bus with a differential probe',
+  'check output capacitor derating at 85 °C',
+  'add a snubber continuity test to the ATE',
+]) task({ proj: 'CF03B04', title: t, created: at(9, 14, 20 + Math.floor(rnd() * 30)), origin: dfmea });
 
 for (const t of [
-  'pedir amostra do driver isolado UCC21540',
-  'cotar indutor alternativo de 47 µH',
-]) tarefa({ proj: 'NACQ', titulo: t, criada: em(2, 11, 10 + Math.floor(rnd() * 25)), origem: compras });
+  'request a sample of the UCC21540 isolated driver',
+  'quote an alternative 47 µH inductor',
+]) task({ proj: 'NACQ', title: t, created: at(2, 11, 10 + Math.floor(rnd() * 25)), origin: purchasing });
 
-tarefa({ titulo: 'estudar topologia LLC para a próxima geração', criada: em(6, 17, 40) });
-tarefa({ proj: 'INFRA', titulo: 'migrar planilha de perdas para script', criada: em(4, 18) });
-tarefa({ proj: 'INFRA', titulo: 'recalibrar a ponteira diferencial (venceu em maio)', criada: em(1, 9, 15) });
+task({ title: 'study LLC topology for the next generation', created: at(6, 17, 40) });
+task({ proj: 'INFRA', title: 'migrate the loss spreadsheet to a script', created: at(4, 18) });
+task({ proj: 'INFRA', title: 'recalibrate the differential probe (expired in May)', created: at(1, 9, 15) });
 
-// ── fila ───────────────────────────────────────────────────────────────────
-tarefa({ proj: 'CF03B04', titulo: 'Fechar eBOM CF03B04 rev C', status: 'fila',
-  criada: em(7, 10), fila: em(1, 9), prazo: em(-2, 12) });
-tarefa({ proj: 'NACQ', titulo: 'Refazer DFMEA da malha de corrente', status: 'fila',
-  criada: em(5, 15), fila: em(1, 9), prazo: em(-9, 12) });
-tarefa({ proj: 'INFRA', titulo: 'Trocar o ventilador da carga eletrônica', status: 'fila',
-  criada: em(3, 16), fila: em(1, 9) });
+// ── queued ─────────────────────────────────────────────────────────────────
+task({ proj: 'CF03B04', title: 'Close eBOM CF03B04 rev C', status: 'queued',
+  created: at(7, 10), queued: at(1, 9), due: at(-2, 12) });
+task({ proj: 'NACQ', title: 'Redo the current-loop DFMEA', status: 'queued',
+  created: at(5, 15), queued: at(1, 9), due: at(-9, 12) });
+task({ proj: 'INFRA', title: 'Replace the electronic load fan', status: 'queued',
+  created: at(3, 16), queued: at(1, 9) });
 
-// ── fazendo: DOIS cards, e só um vai estar rodando ─────────────────────────
-// É a distinção que o app faz: "estar em Fazendo" != "estar rodando agora".
-const termico = tarefa({
-  proj: 'CF03B04', titulo: 'Ensaio térmico — 3 pontos de carga', status: 'fazendo',
-  criada: em(8, 16), fila: em(3, 9), inicio: em(3, 10, 30),
+// ── doing: TWO cards, and only one of them will be running ─────────────────
+// This is the distinction the app makes: "being in Doing" != "running right now".
+const thermal = task({
+  proj: 'CF03B04', title: 'Thermal test — 3 load points', status: 'doing',
+  created: at(8, 16), queued: at(3, 9), started: at(3, 10, 30),
 });
-sessao(termico, em(3, 10, 30), 135);
-sessao(termico, em(1, 14), 95);
+session(thermal, at(3, 10, 30), 135);
+session(thermal, at(1, 14), 95);
 
-const snubber = tarefa({
-  proj: 'CF03B04', titulo: 'Revisar layout do snubber RCD', status: 'fazendo',
-  criada: em(10, 11), fila: em(4, 9), inicio: em(4, 13),
+const snubber = task({
+  proj: 'CF03B04', title: 'Review RCD snubber layout', status: 'doing',
+  created: at(10, 11), queued: at(4, 9), started: at(4, 13),
 });
-sessao(snubber, em(4, 13), 110);
-sessao(snubber, em(2, 15, 30), 75);
+session(snubber, at(4, 13), 110);
+session(snubber, at(2, 15, 30), 75);
 
-// ── feito ──────────────────────────────────────────────────────────────────
-const feitos = [
-  ['CF03B04', 'Ensaio EMC pré-compliance', 'trabalho', 12, 6, [[12, 9, 165], [11, 14, 240]]],
-  ['NACQ', 'Cotação de conectores AC', 'trabalho', 8, 5, [[6, 16, 90]]],
-  ['CF03B04', 'Simulação do snubber no LTspice', 'trabalho', 14, 10, [[11, 9, 145], [10, 15, 80]]],
-  ['INFRA', 'Organizar datasheets da bancada 2', 'admin', 7, 5, [[5, 17, 55]]],
-  ['NACQ', 'Revisar BOM da fonte auxiliar', 'trabalho', 9, 7, [[7, 10, 120]]],
-  ['CF03B04', 'Levantar curva de eficiência rev B', 'trabalho', 16, 13, [[14, 9, 200], [13, 14, 130]]],
+// ── done ───────────────────────────────────────────────────────────────────
+const doneTasks = [
+  ['CF03B04', 'EMC pre-compliance test', 'work', 12, 6, [[12, 9, 165], [11, 14, 240]]],
+  ['NACQ', 'AC connector quote', 'work', 8, 5, [[6, 16, 90]]],
+  ['CF03B04', 'Snubber simulation in LTspice', 'work', 14, 10, [[11, 9, 145], [10, 15, 80]]],
+  ['INFRA', 'Organize bench 2 datasheets', 'admin', 7, 5, [[5, 17, 55]]],
+  ['NACQ', 'Review auxiliary supply BOM', 'work', 9, 7, [[7, 10, 120]]],
+  ['CF03B04', 'Measure rev B efficiency curve', 'work', 16, 13, [[14, 9, 200], [13, 14, 130]]],
 ];
-for (const [p, titulo, kind, criadaD, fimD, sess] of feitos) {
-  const id = tarefa({
-    proj: p, titulo, kind, status: 'feito',
-    criada: em(criadaD, 9), fila: em(criadaD - 1, 9),
-    inicio: em(sess[0][0], sess[0][1]), fim: em(fimD, 17),
+for (const [p, title, kind, createdD, doneD, sess] of doneTasks) {
+  const id = task({
+    proj: p, title, kind, status: 'done',
+    created: at(createdD, 9), queued: at(createdD - 1, 9),
+    started: at(sess[0][0], sess[0][1]), done: at(doneD, 17),
   });
-  for (const [d, h, m] of sess) sessao(id, em(d, h), m);
+  for (const [d, h, m] of sess) session(id, at(d, h), m);
 }
 
-// ── reuniões e admin dos últimos 15 dias úteis ─────────────────────────────
-// A proporção importa: um engenheiro real passa 20-30% do tempo em reunião, e
-// é exatamente esse número que o app existe para mostrar. Com 3% o relatório
-// não diria nada.
-const ROTINA = [
-  ['Daily do time de hardware', 'reuniao', null, 20, 1.0],
-  ['Revisão de projeto — CF03B04', 'reuniao', 'CF03B04', 75, 0.55],
-  ['Alinhamento com produção', 'reuniao', 'NACQ', 45, 0.5],
-  ['Comitê de mudança de engenharia', 'reuniao', null, 60, 0.3],
-  ['E-mails e aprovações', 'admin', 'INFRA', 35, 0.7],
-  ['Suporte à produção — linha 3', 'admin', 'NACQ', 40, 0.3],
+// ── meetings and admin over the last 15 working days ───────────────────────
+// The ratio matters: a real engineer spends 20-30% of their time in meetings, and
+// that is exactly the number the app exists to show. At 3% the report
+// would say nothing.
+const ROUTINE = [
+  ['Hardware team daily', 'meeting', null, 20, 1.0],
+  ['Design review — CF03B04', 'meeting', 'CF03B04', 75, 0.55],
+  ['Sync with production', 'meeting', 'NACQ', 45, 0.5],
+  ['Engineering change committee', 'meeting', null, 60, 0.3],
+  ['Emails and approvals', 'admin', 'INFRA', 35, 0.7],
+  ['Production support — line 3', 'admin', 'NACQ', 40, 0.3],
 ];
 for (let d = 15; d >= 1; d--) {
-  if (ehFimDeSemana(em(d, 9))) continue;
-  let hora = 8;
-  for (const [titulo, kind, p, dur, chance] of ROTINA) {
+  if (isWeekend(at(d, 9))) continue;
+  let hour = 8;
+  for (const [title, kind, p, dur, chance] of ROUTINE) {
     if (rnd() > chance) continue;
     const min = Math.round(dur * (0.7 + rnd() * 0.6));
-    const id = tarefa({
-      proj: p, titulo, kind, status: 'feito',
-      criada: em(d, 8, 15), fila: em(d, 8, 15), inicio: em(d, hora), fim: em(d, hora, min),
+    const id = task({
+      proj: p, title, kind, status: 'done',
+      created: at(d, 8, 15), queued: at(d, 8, 15), started: at(d, hour), done: at(d, hour, min),
     });
-    sessao(id, em(d, hora, Math.floor(rnd() * 15)), min);
-    hora += Math.max(1, Math.ceil(min / 60));
-    if (hora > 16) break;
+    session(id, at(d, hour, Math.floor(rnd() * 15)), min);
+    hour += Math.max(1, Math.ceil(min / 60));
+    if (hour > 16) break;
   }
 }
 
-// ── blocos de foco nas tarefas em curso, para a semana ter volume real ─────
-// Um dia de engenharia tem 5-7 h medidas, não 45 min.
+// ── focus blocks on the in-progress tasks, so the week has real volume ─────
+// An engineering day has 5-7 h measured, not 45 min.
 for (let d = 14; d >= 1; d--) {
-  const dia = em(d, 9);
-  if (ehFimDeSemana(dia)) continue;
-  const alvo = escolhe([termico, snubber, dfmea === undefined ? termico : snubber]);
-  sessao(alvo, em(d, 10, 30 + Math.floor(rnd() * 25)), 70 + Math.floor(rnd() * 55));
-  sessao(alvo, em(d, 14, 30 + Math.floor(rnd() * 30)), 80 + Math.floor(rnd() * 60));
+  const day = at(d, 9);
+  if (isWeekend(day)) continue;
+  const target = pick([thermal, snubber, dfmea === undefined ? thermal : snubber]);
+  session(target, at(d, 10, 30 + Math.floor(rnd() * 25)), 70 + Math.floor(rnd() * 55));
+  session(target, at(d, 14, 30 + Math.floor(rnd() * 30)), 80 + Math.floor(rnd() * 60));
 }
 
-// ── a sessão que está RODANDO agora ────────────────────────────────────────
-// Exatamente uma: o índice único do banco não permitiria mais.
-const inicioAberta = new Date(AGORA.getTime() - 47 * 60000);
-insSess.run(termico, iso(inicioAberta), null, TZ, 'auto', null, iso(inicioAberta));
-db.prepare(`UPDATE tasks SET status = 'fazendo' WHERE id = ?`).run(termico);
+// ── the session that is RUNNING right now ──────────────────────────────────
+// Exactly one: the database's unique index would not allow more.
+const openStart = new Date(NOW.getTime() - 47 * 60000);
+insSess.run(thermal, iso(openStart), null, TZ, 'auto', null, iso(openStart));
+db.prepare(`UPDATE tasks SET status = 'doing' WHERE id = ?`).run(thermal);
 
-// ── conferência ────────────────────────────────────────────────────────────
-const abertas = db.prepare(`SELECT COUNT(*) AS n FROM sessions WHERE ended_at IS NULL`).get().n;
-const horas = db.prepare(
+// ── sanity check ───────────────────────────────────────────────────────────
+const openCount = db.prepare(`SELECT COUNT(*) AS n FROM sessions WHERE ended_at IS NULL`).get().n;
+const hours = db.prepare(
   `SELECT ROUND(SUM((julianday(ended_at)-julianday(started_at))*24), 1) AS h
      FROM sessions WHERE ended_at IS NOT NULL`).get().h;
-const porStatus = db.prepare(
+const byStatus = db.prepare(
   `SELECT status, COUNT(*) AS n FROM tasks GROUP BY status ORDER BY status`).all();
 
-console.log(`\n  ${arquivo}\n`);
-console.log(`  projetos ......... ${conta('projects')}`);
-for (const s of porStatus) console.log(`  ${s.status.padEnd(16, '.')} ${s.n}`);
-console.log(`  sessões .......... ${conta('sessions')}  (${horas} h registradas)`);
+console.log(`\n  ${dbFile}\n`);
+console.log(`  projects ......... ${count('projects')}`);
+for (const s of byStatus) console.log(`  ${s.status.padEnd(16, '.')} ${s.n}`);
+console.log(`  sessions ......... ${count('sessions')}  (${hours} h logged)`);
 const mix = db.prepare(
   `SELECT t.kind, ROUND(100.0*SUM(julianday(s.ended_at)-julianday(s.started_at)) /
           (SELECT SUM(julianday(ended_at)-julianday(started_at)) FROM sessions WHERE ended_at IS NOT NULL)) AS pct
      FROM sessions s JOIN tasks t ON t.id=s.task_id
     WHERE s.ended_at IS NOT NULL GROUP BY t.kind ORDER BY pct DESC`).all();
-console.log(`  mistura .......... ${mix.map((m) => `${m.kind} ${m.pct}%`).join('  ')}`);
-console.log(`  rodando agora .... ${abertas}`);
-if (abertas !== 1) { console.error('\n  ERRO: deveria haver exatamente 1 sessão aberta.'); process.exit(1); }
-console.log('\n  pronto — abra o app.\n');
+console.log(`  mix .............. ${mix.map((m) => `${m.kind} ${m.pct}%`).join('  ')}`);
+console.log(`  running now ...... ${openCount}`);
+if (openCount !== 1) { console.error('\n  ERROR: there should be exactly 1 open session.'); process.exit(1); }
+console.log('\n  done — open the app.\n');
 db.close();

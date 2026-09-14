@@ -1,16 +1,16 @@
-// `[[link]]` na gramática do parser de markdown.
+// `[[link]]` in the markdown parser's grammar.
 //
-// O CommonMark não conhece wikilink: sem isto, `[[Nota]]` vira um link de
-// referência vazio e o live preview não tem nó nenhum para decorar. Roda
-// ANTES do parser de Link, que também começa em '['.
+// CommonMark knows nothing about wikilinks: without this, `[[Note]]` becomes an
+// empty reference link and the live preview has no node to decorate. Runs
+// BEFORE the Link parser, which also starts at '['.
 
 import type { InlineContext, MarkdownConfig } from '@lezer/markdown';
 import { tags as t } from '@lezer/highlight';
 
-const ABRE = 91;   // [
-const FECHA = 93;  // ]
-const BANG = 33;   // !
-const QUEBRA = 10; // \n
+const OPEN = 91;     // [
+const CLOSE = 93;    // ]
+const BANG = 33;     // !
+const NEWLINE = 10;  // \n
 
 export const WikiLink: MarkdownConfig = {
   defineNodes: [
@@ -21,22 +21,22 @@ export const WikiLink: MarkdownConfig = {
     name: 'WikiLink',
     before: 'Link',
     parse(cx: InlineContext, next: number, pos: number): number {
-      const ini = pos;
-      let dentro = pos;
+      const start = pos;
+      let inner = pos;
       if (next === BANG) {
-        if (cx.char(pos + 1) !== ABRE || cx.char(pos + 2) !== ABRE) return -1;
-        dentro = pos + 3;
+        if (cx.char(pos + 1) !== OPEN || cx.char(pos + 2) !== OPEN) return -1;
+        inner = pos + 3;
       } else {
-        if (next !== ABRE || cx.char(pos + 1) !== ABRE) return -1;
-        dentro = pos + 2;
+        if (next !== OPEN || cx.char(pos + 1) !== OPEN) return -1;
+        inner = pos + 2;
       }
-      for (let i = dentro; i < cx.end - 1; i++) {
+      for (let i = inner; i < cx.end - 1; i++) {
         const c = cx.char(i);
-        if (c === QUEBRA || c === ABRE) return -1;
-        if (c === FECHA && cx.char(i + 1) === FECHA) {
-          if (i === dentro) return -1;   // `[[]]` não é link
-          return cx.addElement(cx.elt('WikiLink', ini, i + 2, [
-            cx.elt('WikiLinkMark', ini, dentro),
+        if (c === NEWLINE || c === OPEN) return -1;
+        if (c === CLOSE && cx.char(i + 1) === CLOSE) {
+          if (i === inner) return -1;   // `[[]]` is not a link
+          return cx.addElement(cx.elt('WikiLink', start, i + 2, [
+            cx.elt('WikiLinkMark', start, inner),
             cx.elt('WikiLinkMark', i, i + 2),
           ]));
         }

@@ -1,210 +1,210 @@
-// Estado compartilhado. Refs de módulo + funções exportadas, sem Pinia.
-// O dado real mora no SQLite; isto é só o que a UI precisa lembrar entre telas.
+// Shared state. Module refs + exported functions, no Pinia.
+// The real data lives in SQLite; this is only what the UI needs to remember between screens.
 
 import { computed, ref } from 'vue';
-import type { Outcome, Project, SessionCard, TaskCard, TaskStatus, Totais } from './types';
+import type { Outcome, Project, SessionCard, TaskCard, TaskStatus, Totals } from './types';
 import * as api from './db';
-import { codigoAuto } from './projects';
+import { deriveProjectCode } from './projects';
 import { dayKey, type DayKey } from './time';
 import { toast } from './toast';
-import { emite } from './events';
+import { emitEvent } from './events';
 
 /**
- * Projetos vivos, já com contagem e horas. É `ProjetoResumo`, que estende
- * `Project` — quem só precisa de id/nome/cor continua funcionando.
+ * Live projects, already with counts and hours. It is `ProjectSummary`, which extends
+ * `Project` — code that only needs id/name/color keeps working.
  */
-export const projetos = ref<api.ProjetoResumo[]>([]);
-/** Inclui arquivados. Só Ajustes e a resolução de nome antigo precisam. */
-export const projetosArquivados = ref<Project[]>([]);
-export const tarefas = ref<TaskCard[]>([]);
-export const rodando = ref<SessionCard | null>(null);
-export const diaAtual = ref<DayKey>(dayKey());
-export const sessoesDia = ref<SessionCard[]>([]);
-export const totaisDia = ref<Totais>({ total: 0, trabalho: 0, reuniao: 0, admin: 0 });
-export const carregando = ref(false);
-/** Tarefa aberta no painel de detalhe (null = fechado). */
-export const detalheId = ref<number | null>(null);
-export const abreDetalhe = (id: number | null) => { detalheId.value = id; };
+export const projects = ref<api.ProjectSummary[]>([]);
+/** Includes archived ones. Only Settings and resolving an old name need it. */
+export const archivedProjects = ref<Project[]>([]);
+export const tasks = ref<TaskCard[]>([]);
+export const running = ref<SessionCard | null>(null);
+export const currentDay = ref<DayKey>(dayKey());
+export const daySessions = ref<SessionCard[]>([]);
+export const dayTotals = ref<Totals>({ total: 0, work: 0, meeting: 0, admin: 0 });
+export const loading = ref(false);
+/** Task open in the detail panel (null = closed). */
+export const detailTaskId = ref<number | null>(null);
+export const openTaskDetail = (id: number | null) => { detailTaskId.value = id; };
 
-export const porStatus = (s: TaskStatus) => computed(() =>
-  tarefas.value.filter((t) => t.status === s));
+export const tasksByStatus = (s: TaskStatus) => computed(() =>
+  tasks.value.filter((t) => t.status === s));
 
-export const backlog = computed(() => tarefas.value.filter((t) => t.status === 'backlog'));
+export const backlog = computed(() => tasks.value.filter((t) => t.status === 'backlog'));
 
-export async function carregaProjetos(): Promise<void> {
-  const [vivos, todos] = await Promise.all([api.resumoProjetos(), api.listProjects(true)]);
-  projetos.value = vivos;
-  projetosArquivados.value = todos.filter((p) => p.archived_at);
+export async function loadProjects(): Promise<void> {
+  const [live, all] = await Promise.all([api.listProjectSummaries(), api.listProjects(true)]);
+  projects.value = live;
+  archivedProjects.value = all.filter((p) => p.archived_at);
 }
 
 /**
- * Cria e devolve o projeto pronto para uso imediato.
+ * Creates the project and returns it ready for immediate use.
  *
- * Devolve o objeto, não o id: quem cria um projeto no meio de uma captura
- * precisa do nome e da cor na mesma tecla, para pintar o pill sem esperar
- * outro round-trip.
+ * Returns the object, not the id: whoever creates a project in the middle of a capture
+ * needs the name and the color on the same keystroke, to paint the pill without waiting
+ * for another round-trip.
  */
-export async function criaProjeto(nome: string, codigo: string | null = null): Promise<Project | null> {
-  const n = nome.trim();
+export async function createProject(name: string, code: string | null = null): Promise<Project | null> {
+  const n = name.trim();
   if (!n) return null;
   try {
-    // Sem código o chip de projeto cai no nome inteiro e a coluna do
-    // seletor fica vazia. Derivar é melhor que pedir mais um campo.
-    const id = await api.createProject(n, codigo ?? codigoAuto(n, projetos.value));
-    await carregaProjetos();
-    return projetos.value.find((p) => p.id === id) ?? null;
+    // Without a code the project chip falls back to the whole name and the
+    // picker's column is left empty. Deriving one beats asking for another field.
+    const id = await api.createProject(n, code ?? deriveProjectCode(n, projects.value));
+    await loadProjects();
+    return projects.value.find((p) => p.id === id) ?? null;
   } catch (e) {
-    toast.erro(api.dbErro(e));
+    toast.error(api.dbError(e));
     return null;
   }
 }
 
 /**
- * Recarrega quadro + sessão ativa juntos.
- * São sempre lidos em par porque mover um card muda os dois — separá-los deixa
- * a tela mostrando um card em "Fazendo" e nenhum cronômetro, ou o contrário.
+ * Reloads the board + the active session together.
+ * They are always read as a pair because moving a card changes both — splitting them leaves
+ * the screen showing a card in "Doing" and no timer, or the other way around.
  */
-export async function carregaQuadro(): Promise<void> {
-  carregando.value = true;
+export async function loadBoard(): Promise<void> {
+  loading.value = true;
   try {
-    const [t, s] = await Promise.all([api.boardTasks(), api.sessaoAberta()]);
-    tarefas.value = t;
-    rodando.value = s;
+    const [t, s] = await Promise.all([api.boardTasks(), api.getOpenSession()]);
+    tasks.value = t;
+    running.value = s;
   } catch (e) {
-    toast.erro(api.dbErro(e));
+    toast.error(api.dbError(e));
   } finally {
-    carregando.value = false;
+    loading.value = false;
   }
 }
 
-/** Sequência da última carga pedida: resposta atrasada de um dia antigo é descartada. */
-let seqDia = 0;
+/** Sequence of the last requested load: a late response for an old day is discarded. */
+let daySeq = 0;
 
-export async function carregaDia(key: DayKey = diaAtual.value): Promise<void> {
-  const meu = ++seqDia;
-  diaAtual.value = key;
+export async function loadDay(key: DayKey = currentDay.value): Promise<void> {
+  const mine = ++daySeq;
+  currentDay.value = key;
   try {
-    const [s, t] = await Promise.all([api.sessoesDoDia(key), api.totaisDoDia(key)]);
-    if (meu !== seqDia) return;
-    sessoesDia.value = s;
-    totaisDia.value = t;
+    const [s, t] = await Promise.all([api.listDaySessions(key), api.getDayTotals(key)]);
+    if (mine !== daySeq) return;
+    daySessions.value = s;
+    dayTotals.value = t;
   } catch (e) {
-    if (meu === seqDia) toast.erro(api.dbErro(e));
+    if (mine === daySeq) toast.error(api.dbError(e));
   }
 }
 
-/** Move o card e recarrega. É a operação que produz o tempo. */
+/** Moves the card and reloads. It is the operation that produces time. */
 /**
- * Anuncia o que um movimento de coluna significou para o TEMPO. Quem entra
- * em 'fazendo' abre sessão (e fecha a que estava aberta); quem sai, fecha.
- * É a mesma regra do moveTask — aqui só vira evento para os plugins.
+ * Announces what a column move meant for TIME. A task entering
+ * 'doing' opens a session (and closes the one that was open); a task leaving it closes it.
+ * It is the same rule as moveTask — here it just becomes an event for plugins.
  */
-function anunciaMovimento(id: number, de: TaskStatus | null, para: TaskStatus, rodavaAntes: number | null): void {
-  emite('tarefa:movida', { id, de, para });
-  if (para === 'fazendo') {
-    if (rodavaAntes != null && rodavaAntes !== id) emite('sessao:encerrada', { tarefa: rodavaAntes });
-    emite('sessao:iniciada', { tarefa: id, titulo: tarefas.value.find((t) => t.id === id)?.title ?? '' });
-  } else if (rodavaAntes === id) {
-    emite('sessao:encerrada', { tarefa: id });
+function announceMove(id: number, from: TaskStatus | null, to: TaskStatus, runningBefore: number | null): void {
+  emitEvent('task:moved', { id, from, to });
+  if (to === 'doing') {
+    if (runningBefore != null && runningBefore !== id) emitEvent('session:stopped', { task: runningBefore });
+    emitEvent('session:started', { task: id, title: tasks.value.find((t) => t.id === id)?.title ?? '' });
+  } else if (runningBefore === id) {
+    emitEvent('session:stopped', { task: id });
   }
 }
 
-export async function move(id: number, para: TaskStatus): Promise<void> {
-  const de = tarefas.value.find((t) => t.id === id)?.status ?? null;
-  const rodavaAntes = rodando.value?.task_id ?? null;
+export async function move(id: number, to: TaskStatus): Promise<void> {
+  const from = tasks.value.find((t) => t.id === id)?.status ?? null;
+  const runningBefore = running.value?.task_id ?? null;
   try {
-    await api.moveTask(id, para);
-    await Promise.all([carregaQuadro(), carregaDia()]);
-    if (de !== para) anunciaMovimento(id, de, para, rodavaAntes);
+    await api.moveTask(id, to);
+    await Promise.all([loadBoard(), loadDay()]);
+    if (from !== to) announceMove(id, from, to, runningBefore);
   } catch (e) {
-    toast.erro(api.dbErro(e));
+    toast.error(api.dbError(e));
   }
 }
 
-export async function captura(
-  titulo: string, projeto: number | null, kind: TaskCard['kind'] = 'trabalho',
+export async function capture(
+  title: string, projectId: number | null, kind: TaskCard['kind'] = 'work',
 ): Promise<void> {
   try {
-    await api.capturaTarefa(titulo, projeto, kind);
-    await carregaQuadro();
+    await api.captureTask(title, projectId, kind);
+    await loadBoard();
   } catch (e) {
-    toast.erro(api.dbErro(e));
+    toast.error(api.dbError(e));
   }
 }
 
-export async function conclui(id: number, outcome: Outcome, nota: string | null): Promise<void> {
-  const de = tarefas.value.find((t) => t.id === id)?.status ?? null;
-  const rodavaAntes = rodando.value?.task_id ?? null;
+export async function complete(id: number, outcome: Outcome, note: string | null): Promise<void> {
+  const from = tasks.value.find((t) => t.id === id)?.status ?? null;
+  const runningBefore = running.value?.task_id ?? null;
   try {
-    await api.concluiTarefa(id, outcome, nota);
-    if (de !== 'feito') anunciaMovimento(id, de, 'feito', rodavaAntes);
-    await Promise.all([carregaQuadro(), carregaDia()]);
+    await api.completeTask(id, outcome, note);
+    if (from !== 'done') announceMove(id, from, 'done', runningBefore);
+    await Promise.all([loadBoard(), loadDay()]);
   } catch (e) {
-    toast.erro(api.dbErro(e));
+    toast.error(api.dbError(e));
   }
 }
 
-export async function pausa(): Promise<void> {
-  const rodavaAntes = rodando.value?.task_id ?? null;
+export async function pause(): Promise<void> {
+  const runningBefore = running.value?.task_id ?? null;
   try {
-    await api.pausa();
-    if (rodavaAntes != null) emite('sessao:encerrada', { tarefa: rodavaAntes });
-    await Promise.all([carregaQuadro(), carregaDia()]);
+    await api.pauseSession();
+    if (runningBefore != null) emitEvent('session:stopped', { task: runningBefore });
+    await Promise.all([loadBoard(), loadDay()]);
   } catch (e) {
-    toast.erro(api.dbErro(e));
+    toast.error(api.dbError(e));
   }
 }
 
-export function projetoDe(id: number | null): Project | undefined {
+export function getProject(id: number | null): Project | undefined {
   if (id == null) return undefined;
-  return projetos.value.find((p) => p.id === id)
-    ?? projetosArquivados.value.find((p) => p.id === id);
+  return projects.value.find((p) => p.id === id)
+    ?? archivedProjects.value.find((p) => p.id === id);
 }
 
 /**
- * Card em arrasto agora. Mora no store porque o alvo (a lista de projetos na
- * sidebar) vive em App.vue e a origem (o card) vive no Quadro — soltar um card
- * sobre um projeto é a forma mais direta de reatribuir, e era impossível com
- * o `arrastando` como ref local de Quadro.vue.
+ * Card being dragged right now. It lives in the store because the target (the project list
+ * in the sidebar) lives in App.vue and the source (the card) lives on the Board — dropping a card
+ * on a project is the most direct way to reassign it, and that was impossible with
+ * `draggingTaskId` as a local ref of Board.vue.
  */
-export const arrastando = ref<number | null>(null);
+export const draggingTaskId = ref<number | null>(null);
 
-export async function soltaEmProjeto(projectId: number | null): Promise<void> {
-  const id = arrastando.value;
-  arrastando.value = null;
+export async function dropOnProject(projectId: number | null): Promise<void> {
+  const id = draggingTaskId.value;
+  draggingTaskId.value = null;
   if (id == null) return;
   try {
-    await api.reatribuiProjeto([id], projectId);
-    await Promise.all([carregaQuadro(), carregaProjetos()]);
-    const p = projetos.value.find((x) => x.id === projectId);
-    toast.ok(p ? `Movida para ${p.name}` : 'Movida para a Caixa');
+    await api.reassignTasks([id], projectId);
+    await Promise.all([loadBoard(), loadProjects()]);
+    const p = projects.value.find((x) => x.id === projectId);
+    toast.ok(p ? `Moved to ${p.name}` : 'Moved to the Inbox');
   } catch (e) {
-    toast.erro(api.dbErro(e));
+    toast.error(api.dbError(e));
   }
 }
 
-// ── captura global ────────────────────────────────────────────────────────
-// Uma superfície de criação só, chamável de qualquer tela. Antes eram quatro
-// botões que discordavam entre si — e o mais destacado deles não criava nada.
+// ── global capture ────────────────────────────────────────────────────────
+// A single creation surface, callable from any screen. It used to be four
+// buttons that disagreed with each other — and the most prominent of them created nothing.
 
-/** Aberta = objeto com o contexto; null = fechada. */
-export const quickAdd = ref<{ projeto: number | null; status: TaskStatus } | null>(null);
+/** Open = object with the context; null = closed. */
+export const quickAdd = ref<{ projectId: number | null; status: TaskStatus } | null>(null);
 
-export function abreQuickAdd(projeto: number | null = null, status: TaskStatus = 'backlog'): void {
-  quickAdd.value = { projeto, status };
+export function openQuickAdd(projectId: number | null = null, status: TaskStatus = 'backlog'): void {
+  quickAdd.value = { projectId, status };
 }
-export function fechaQuickAdd(): void { quickAdd.value = null; }
+export function closeQuickAdd(): void { quickAdd.value = null; }
 
 /**
- * Paleta aberta: 'busca' procura notas, tarefas e projetos (Ctrl+K);
- * 'comandos' lista o que o app e os plugins sabem fazer (Ctrl+P).
+ * Open palette: 'search' looks through notes, tasks and projects (Ctrl+K);
+ * 'commands' lists what the app and the plugins know how to do (Ctrl+P).
  */
-export const paleta = ref<null | 'busca' | 'comandos'>(null);
+export const palette = ref<null | 'search' | 'commands'>(null);
 
 /**
- * Recarrega tudo que uma tarefa nova pode ter mexido.
- * Projetos entram junto porque a contagem da sidebar muda com a captura.
+ * Reloads everything a new task may have touched.
+ * Projects come along because the sidebar count changes with the capture.
  */
-export async function recarregaTudo(): Promise<void> {
-  await Promise.all([carregaQuadro(), carregaDia(), carregaProjetos()]);
+export async function reloadAll(): Promise<void> {
+  await Promise.all([loadBoard(), loadDay(), loadProjects()]);
 }

@@ -1,284 +1,284 @@
-# Plugins do Bancada
+# Bancada plugins
 
-Um plugin é uma pasta com dois arquivos. Ele ganha acesso às suas notas, às tarefas, ao
-quadro e — o que nenhum plugin de Obsidian tem — **ao tempo**: sabe quando uma tarefa entra
-em *Fazendo* e quando a sessão de trabalho para.
+A plugin is a folder with two files. It gets access to your notes, your tasks, the
+board and — something no Obsidian plugin has — **time**: it knows when a task moves
+into *Doing* and when the work session stops.
 
-- [Em 5 minutos](#em-5-minutos)
-- [Estrutura](#estrutura)
-- [A API](#a-api)
-- [Eventos](#eventos)
-- [Extensão de editor](#extensão-de-editor)
-- [Painéis](#painéis)
-- [Estilos](#estilos)
-- [Segurança](#segurança)
-- [Versão e compatibilidade](#versão-e-compatibilidade)
+- [In 5 minutes](#in-5-minutes)
+- [Structure](#structure)
+- [The API](#the-api)
+- [Events](#events)
+- [Editor extension](#editor-extension)
+- [Panels](#panels)
+- [Styles](#styles)
+- [Security](#security)
+- [Version and compatibility](#version-and-compatibility)
 - [TypeScript](#typescript)
-- [Depurar](#depurar)
+- [Debugging](#debugging)
 
 ---
 
-## Em 5 minutos
+## In 5 minutes
 
-1. No vault, crie `.bancada/plugins/ola/`.
-2. Dentro, `manifest.json`:
+1. In the vault, create `.bancada/plugins/hello/`.
+2. Inside it, `manifest.json`:
 
    ```json
-   { "id": "ola", "nome": "Olá", "versao": "1.0.0" }
+   { "id": "hello", "name": "Hello", "version": "1.0.0" }
    ```
 
-3. E `main.js`:
+3. And `main.js`:
 
    ```js
    export default {
-     aoLigar(bancada) {
-       bancada.comandos.adiciona({
-         id: 'dizer',
-         nome: 'Dizer olá',
-         executa() {
-           const n = bancada.tarefas.lista().filter((t) => t.status === 'fazendo').length;
-           bancada.ui.toast(`Olá! ${n} tarefa(s) em curso.`);
+     onload(bancada) {
+       bancada.commands.add({
+         id: 'say-hello',
+         name: 'Say hello',
+         run() {
+           const n = bancada.tasks.list().filter((t) => t.status === 'doing').length;
+           bancada.ui.notice(`Hello! ${n} task(s) in progress.`);
          },
        });
      },
    };
    ```
 
-4. **Ajustes → Plugins → Desligar modo restrito → Procurar de novo**, e ligue *Olá*.
-5. **Ctrl+P** → "Dizer olá".
+4. **Settings → Plugins → Turn off restricted mode → Scan again**, and enable *Hello*.
+5. **Ctrl+P** → "Say hello".
 
-Um exemplo completo — extensão de editor, comando, leitura e escrita de notas, CSS — está em
-[`exemplos/plugins/destaca-todo/`](../exemplos/plugins/destaca-todo/). Ajustes tem um botão que
-o instala no seu vault.
+A complete example — editor extension, command, reading and writing notes, CSS — is in
+[`examples/plugins/highlight-todo/`](../examples/plugins/highlight-todo/). Settings has a button that
+installs it into your vault.
 
 ---
 
-## Estrutura
+## Structure
 
 ```
 <vault>/.bancada/plugins/<id>/
-├── manifest.json   obrigatório
-├── main.js         obrigatório — módulo ES
-├── styles.css      opcional — injetado enquanto o plugin estiver ligado
-└── data.json       criado pelo próprio plugin via bancada.dados
+├── manifest.json   required
+├── main.js         required — ES module
+├── styles.css      optional — injected while the plugin is enabled
+└── data.json       created by the plugin itself via bancada.data
 ```
 
-Os plugins moram **dentro do vault**, como os do Obsidian em `.obsidian/plugins/`: vão junto
-com as notas para o git, a nuvem, o outro computador.
+Plugins live **inside the vault**, like Obsidian's in `.obsidian/plugins/`: they travel with
+the notes to git, the cloud, the other computer.
 
 ### manifest.json
 
-| campo | obrigatório | |
+| field | required | |
 |---|---|---|
-| `id` | sim | minúsculas, números e hífen, 2 a 49 caracteres. **Igual ao nome da pasta.** |
-| `nome` | sim | o que aparece em Ajustes e na paleta |
-| `versao` | sim | a do seu plugin |
-| `descricao` | não | uma linha |
-| `autor` | não | |
-| `apiMinima` | não | versão da API que o plugin exige — ver [compatibilidade](#versão-e-compatibilidade) |
+| `id` | yes | lowercase letters, digits and hyphens, 2 to 49 characters. **Same as the folder name.** |
+| `name` | yes | what shows up in Settings and in the palette |
+| `version` | yes | your plugin's version |
+| `description` | no | one line |
+| `author` | no | |
+| `minApiVersion` | no | the API version the plugin requires — see [compatibility](#version-and-compatibility) |
 
 ### main.js
 
-Módulo ES, **sem `import`** — tudo chega pelo objeto `bancada`. Exporte como `default` um
-objeto com `aoLigar`, ou uma classe cujas instâncias tenham `aoLigar`:
+An ES module, **with no `import`** — everything arrives through the `bancada` object. Export as `default` an
+object with `onload`, or a class whose instances have `onload`:
 
 ```js
 export default {
-  async aoLigar(bancada) { /* registre o que precisar */ },
-  aoDesligar() { /* opcional */ },
+  async onload(bancada) { /* register whatever you need */ },
+  onunload() { /* optional */ },
 };
 ```
 
-**Você não precisa desfazer nada no `aoDesligar`.** Todo comando, ouvinte, painel, extensão e
-estilo registrado pela API é removido sozinho quando o plugin desliga. `aoDesligar` existe para
-o que você fez *por fora* da API (um `setInterval`, por exemplo) — e para isso também há
-`bancada.aoDesligar(fn)`.
+**You don't need to undo anything in `onunload`.** Every command, listener, panel, extension and
+style registered through the API is removed on its own when the plugin is disabled. `onunload` exists for
+what you did *outside* the API (a `setInterval`, for example) — and for that there is also
+`bancada.onUnload(fn)`.
 
-Se o `aoLigar` lançar erro, o plugin não liga, o que ele já tinha registrado é desfeito, e a
-mensagem aparece em Ajustes → Plugins.
+If `onload` throws, the plugin is not enabled, whatever it had already registered is undone, and the
+message shows up in Settings → Plugins.
 
 ---
 
-## A API
+## The API
 
-O contrato completo, com a documentação de cada campo, está em
-[`web/src/lib/plugins/tipos.ts`](../web/src/lib/plugins/tipos.ts). Os dados que o plugin recebe
-são **tipos próprios da API** (`NotaInfo`, `TarefaInfo`…), não os tipos internos do banco — o app
-pode mudar por dentro sem quebrar plugin.
+The full contract, with documentation for every field, is in
+[`web/src/lib/plugins/types.ts`](../web/src/lib/plugins/types.ts). The data a plugin receives
+are **the API's own types** (`NoteInfo`, `TaskInfo`…), not the database's internal types — the app
+can change inside without breaking plugins.
 
-| área | o que tem |
+| area | what it has |
 |---|---|
-| `bancada.comandos` | `adiciona({ id, nome, executa })` · `executa(id)` |
-| `bancada.eventos` | `escuta(nome, fn)` — ver [eventos](#eventos) |
-| `bancada.notas` | `lista()` · `le(path)` · `escreve(path, texto)` · `cria(titulo, { pasta, projeto, corpo })` · `existe(path)` · `abre(path)` · `aberta()` · `busca(termo)` · `ligacoes()` · `resolve(alvo)` |
-| `bancada.tarefas` | `lista()` · `cria({ titulo, projeto, prazo, status })` · `move(id, status)` · `abre(id)` · `rodando()` · `sessoesDoDia(dia?)` |
-| `bancada.projetos` | `lista()` |
-| `bancada.editor` | `registraExtensao(ext)` — ver [extensão de editor](#extensão-de-editor) |
-| `bancada.cm` | os módulos do CodeMirror 6 do app: `view`, `state`, `language` |
-| `bancada.ui` | `toast(msg, tom)` · `adicionaPainel({ id, titulo, monta })` · `abrePainel(id)` · `adicionaEstilo(css)` |
-| `bancada.dados` | `carrega()` · `salva(obj)` — gravado em `data.json` na pasta do plugin |
-| `bancada.aoDesligar(fn)` | limpeza extra |
+| `bancada.commands` | `add({ id, name, run })` · `run(id)` |
+| `bancada.events` | `on(name, fn)` — see [events](#events) |
+| `bancada.notes` | `list()` · `read(path)` · `write(path, text)` · `create(title, { folder, project, body })` · `exists(path)` · `open(path)` · `active()` · `search(term)` · `links()` · `resolve(target)` |
+| `bancada.tasks` | `list()` · `create({ title, project, due, status })` · `move(id, to)` · `open(id)` · `running()` · `sessionsOn(day?)` |
+| `bancada.projects` | `list()` |
+| `bancada.editor` | `registerExtension(ext)` — see [editor extension](#editor-extension) |
+| `bancada.cm` | the app's CodeMirror 6 modules: `view`, `state`, `language` |
+| `bancada.ui` | `notice(message, tone)` · `addPanel({ id, title, mount })` · `openPanel(id)` · `addStyle(css)` |
+| `bancada.data` | `load()` · `save(obj)` — stored in `data.json` in the plugin folder |
+| `bancada.onUnload(fn)` | extra cleanup |
 
-Caminhos de nota são **relativos ao vault, sempre com `/`**: `'Técnico/Snubber RCD.md'`.
-Caminho com `..` é recusado.
+Note paths are **relative to the vault, always with `/`**: `'Technical/RCD snubber.md'`.
+A path with `..` is refused.
 
-`notas.escreve` grava o arquivo **e** reindexa — a busca e os backlinks já enxergam a mudança.
-Se a nota estiver aberta no editor, ele adota o texto novo.
+`notes.write` writes the file **and** reindexes — search and backlinks already see the change.
+If the note is open in the editor, the editor adopts the new text.
 
 ---
 
-## Eventos
+## Events
 
 ```js
-bancada.eventos.escuta('sessao:iniciada', ({ tarefa, titulo }) => {
-  bancada.ui.toast(`Foco em: ${titulo}`);
+bancada.events.on('session:started', ({ task, title }) => {
+  bancada.ui.notice(`Focus on: ${title}`);
 });
 ```
 
-| evento | dado |
+| event | payload |
 |---|---|
-| `nota:aberta` | `{ path }` |
-| `nota:salva` | `{ path, texto }` |
-| `nota:criada` · `nota:apagada` | `{ path }` |
-| `nota:renomeada` | `{ de, para }` |
-| `nota:externa` | `{ path }` — mudou **por fora** do app (Obsidian, git, Dropbox) |
-| `vault:sincronizado` | `{ total }` |
-| `tarefa:criada` | `{ id, titulo, projeto }` |
-| `tarefa:movida` | `{ id, de, para }` |
-| **`sessao:iniciada`** | `{ tarefa, titulo }` — o trabalho começou |
-| **`sessao:encerrada`** | `{ tarefa }` — parou (pausa, conclusão, ou outra tarefa começou) |
+| `note:opened` | `{ path }` |
+| `note:saved` | `{ path, text }` |
+| `note:created` · `note:deleted` | `{ path }` |
+| `note:renamed` | `{ from, to }` |
+| `note:external` | `{ path }` — changed **outside** the app (Obsidian, git, Dropbox) |
+| `vault:synced` | `{ total }` |
+| `task:created` | `{ id, title, project }` |
+| `task:moved` | `{ id, from, to }` |
+| **`session:started`** | `{ task, title }` — work started |
+| **`session:stopped`** | `{ task }` — it stopped (pause, completion, or another task started) |
 
-Os dois de sessão são o motivo de um plugin morar aqui e não no Obsidian: com eles dá para
-fazer pomodoro que respeita o quadro, integração com calendário, "não perturbe" automático,
-relatório de foco.
+The two session events are the reason for a plugin to live here and not in Obsidian: with them you can
+build a pomodoro that respects the board, calendar integration, automatic "do not disturb",
+a focus report.
 
-Um ouvinte que lança erro não derruba o app nem cala os outros ouvintes.
+A listener that throws neither brings the app down nor silences the other listeners.
 
 ---
 
-## Extensão de editor
+## Editor extension
 
-O editor de notas é CodeMirror 6. Um plugin **não consegue importar o CodeMirror** (não há
-resolução de módulos para um arquivo carregado do vault) — e mesmo que conseguisse, duas cópias
-do CodeMirror não conversam. Por isso as classes chegam em `bancada.cm`:
+The notes editor is CodeMirror 6. A plugin **cannot import CodeMirror** (there is no
+module resolution for a file loaded from the vault) — and even if it could, two copies
+of CodeMirror don't talk to each other. That is why the classes arrive in `bancada.cm`:
 
 ```js
 const { ViewPlugin, Decoration, MatchDecorator } = bancada.cm.view;
 
-const pintor = new MatchDecorator({
-  regexp: /\bURGENTE\b/g,
-  decoration: () => Decoration.mark({ class: 'meu-urgente' }),
+const painter = new MatchDecorator({
+  regexp: /\bURGENT\b/g,
+  decoration: () => Decoration.mark({ class: 'my-urgent' }),
 });
 
-bancada.editor.registraExtensao(ViewPlugin.fromClass(class {
-  constructor(view) { this.decorations = pintor.createDeco(view); }
-  update(u) { this.decorations = pintor.updateDeco(u, this.decorations); }
+bancada.editor.registerExtension(ViewPlugin.fromClass(class {
+  constructor(view) { this.decorations = painter.createDeco(view); }
+  update(u) { this.decorations = painter.updateDeco(u, this.decorations); }
 }, { decorations: (v) => v.decorations }));
 ```
 
-Ligar ou desligar o plugin reconfigura o editor aberto na hora, sem recarregar a nota.
+Enabling or disabling the plugin reconfigures the open editor right away, without reloading the note.
 
-**Regra de ouro do editor do Bancada:** decoração nunca altera o texto. O arquivo no disco tem
-que continuar byte a byte o que a pessoa digitou — o Obsidian abre o mesmo vault.
+**Golden rule of the Bancada editor:** a decoration never changes the text. The file on disk has
+to stay byte for byte what the person typed — Obsidian opens the same vault.
 
 ---
 
-## Painéis
+## Panels
 
-Um painel é uma tela inteira do plugin, listada na barra lateral. Você recebe um elemento vazio
-e faz o que quiser dentro: DOM puro, canvas, ou o seu framework empacotado junto.
+A panel is a full screen of the plugin, listed in the sidebar. You get an empty element
+and do whatever you want inside it: plain DOM, canvas, or your own framework bundled along.
 
 ```js
-bancada.ui.adicionaPainel({
-  id: 'resumo',
-  titulo: 'Resumo da semana',
-  monta(el) {
-    el.innerHTML = '<h2 style="padding:24px">Carregando…</h2>';
+bancada.ui.addPanel({
+  id: 'summary',
+  title: 'Weekly summary',
+  mount(el) {
+    el.innerHTML = '<h2 style="padding:24px">Loading…</h2>';
     const t = setInterval(() => { /* … */ }, 1000);
-    return () => clearInterval(t);   // limpeza ao sair do painel
+    return () => clearInterval(t);   // cleanup when leaving the panel
   },
 });
 ```
 
-O plugin de núcleo **Grafo** ([`web/src/lib/plugins/nucleo/grafo.ts`](../web/src/lib/plugins/nucleo/grafo.ts))
-é um painel escrito só com a API pública — SVG e DOM, sem biblioteca.
+The **Graph** core plugin ([`web/src/lib/plugins/core/graph.ts`](../web/src/lib/plugins/core/graph.ts))
+is a panel written with the public API only — SVG and DOM, no library.
 
 ---
 
-## Estilos
+## Styles
 
-Use as variáveis de cor do app e o plugin segue os três temas sozinho:
+Use the app's color variables and the plugin follows all three themes on its own:
 
 ```css
-.meu-urgente { color: rgb(var(--danger)); background: rgb(var(--danger) / .12); }
+.my-urgent { color: rgb(var(--danger)); background: rgb(var(--danger) / .12); }
 ```
 
-| variável | papel |
+| variable | role |
 |---|---|
-| `--fg` · `--fg-muted` · `--fg-subtle` | texto |
-| `--surface-1` · `--surface-2` · `--surface` · `--surface-3` | fundos, do chão ao hover |
-| `--rule` · `--rule-strong` | bordas |
-| `--accent` · `--accent-ink` | ação principal (`-ink` é para texto) |
-| `--ok` · `--warn` · `--danger` | estados |
-| `--p1` … `--p6` | cores de projeto (o `cor` de `ProjetoInfo`) |
+| `--fg` · `--fg-muted` · `--fg-subtle` | text |
+| `--surface-1` · `--surface-2` · `--surface` · `--surface-3` | backgrounds, from the base to hover |
+| `--rule` · `--rule-strong` | borders |
+| `--accent` · `--accent-ink` | primary action (`-ink` is for text) |
+| `--ok` · `--warn` · `--danger` | states |
+| `--p1` … `--p6` | project colors (the `color` of `ProjectInfo`) |
 
-Os valores são triplas RGB — sempre `rgb(var(--x))` ou `rgb(var(--x) / .2)`.
-
----
-
-## Segurança
-
-**Plugin roda com acesso total ao app**: lê e escreve notas, cria e move tarefas, e está na
-mesma página que o banco. É o mesmo modelo do Obsidian. Só instale o que você confia.
-
-O que o Bancada faz para isso ser uma escolha consciente:
-
-- **Modo restrito é o padrão.** Plugin da comunidade não carrega até você desligá-lo — com um
-  aviso explícito na frente.
-- **A confiança é por vault e fica gravada no app**, não num arquivo do vault. Aqui divergimos
-  do Obsidian de propósito: se ficasse no vault, um vault clonado de alguém chegaria com plugins
-  já ligados e rodaria código na primeira abertura. No Bancada, vault novo abre restrito, sempre.
-- Plugin que falha ao ligar não fica meio registrado: tudo o que ele já tinha feito é desfeito.
-- `id` do manifesto é validado (sem `/`, sem `..`) e tem que ser o nome da pasta.
+The values are RGB triplets — always `rgb(var(--x))` or `rgb(var(--x) / .2)`.
 
 ---
 
-## Versão e compatibilidade
+## Security
 
-A API tem versão (`bancada.versaoApi`, hoje **1.0.0**). A regra:
+**A plugin runs with full access to the app**: it reads and writes notes, creates and moves tasks, and lives on the
+same page as the database. It is the same model as Obsidian's. Only install what you trust.
 
-- mesmo **número principal** = compatível; plugin feito para 1.x roda em qualquer 1.y com y ≥ x;
-- mudou o número principal = contrato quebrou, plugin antigo é recusado com mensagem clara.
+What Bancada does to make this a conscious choice:
 
-Declare no manifesto a menor versão que você usa: `"apiMinima": "1.0.0"`.
+- **Restricted mode is the default.** Community plugins don't load until you turn it off — with an
+  explicit warning in front of you.
+- **Trust is per vault and stored in the app**, not in a file in the vault. Here we diverge
+  from Obsidian on purpose: if it lived in the vault, a vault cloned from someone else would arrive with plugins
+  already enabled and would run code the first time it was opened. In Bancada, a new vault opens restricted, always.
+- A plugin that fails to enable is not left half registered: everything it had already done is undone.
+- The manifest `id` is validated (no `/`, no `..`) and must be the folder name.
+
+---
+
+## Version and compatibility
+
+The API has a version (`bancada.apiVersion`, currently **1.0.0**). The rule:
+
+- same **major number** = compatible; a plugin built for 1.x runs on any 1.y with y ≥ x;
+- a changed major number = the contract broke; an old plugin is refused with a clear message.
+
+Declare in the manifest the lowest version you use: `"minApiVersion": "1.0.0"`.
 
 ---
 
 ## TypeScript
 
-Copie [`web/src/lib/plugins/tipos.ts`](../web/src/lib/plugins/tipos.ts) para o seu projeto como
-`bancada.d.ts`, escreva o plugin em TS e compile para um `main.js` ES module:
+Copy [`web/src/lib/plugins/types.ts`](../web/src/lib/plugins/types.ts) into your project as
+`bancada.d.ts`, write the plugin in TS and compile it to an ES module `main.js`:
 
 ```ts
-import type { Bancada, DefinicaoPlugin } from './bancada';
+import type { Bancada, PluginDefinition } from './bancada';
 
-const plugin: DefinicaoPlugin = {
-  aoLigar(b: Bancada) {
-    b.eventos.escuta('tarefa:movida', ({ id, para }) => { /* … */ });
+const plugin: PluginDefinition = {
+  onload(b: Bancada) {
+    b.events.on('task:moved', ({ id, to }) => { /* … */ });
   },
 };
 export default plugin;
 ```
 
-`tipos.ts` não importa nada de dentro do app de propósito — é o contrato, sozinho.
+`types.ts` imports nothing from inside the app on purpose — it is the contract, on its own.
 
 ---
 
-## Depurar
+## Debugging
 
-- O erro de um plugin que não liga aparece em **Ajustes → Plugins**, embaixo do nome dele.
-- Em `pnpm dev`, o DevTools do WebView abre com o botão direito → *Inspecionar*; `console.log`
-  do plugin aparece lá.
-- Editou o `main.js`? **Ajustes → Plugins → Procurar de novo** recarrega sem reiniciar o app.
-- Para iterar sem Tauri: `pnpm dev:mock` roda o app no navegador com um vault de exemplo em
-  memória, e o botão *Instalar o plugin de exemplo* funciona lá também.
+- The error of a plugin that won't enable shows up in **Settings → Plugins**, under its name.
+- In `pnpm dev`, the WebView DevTools open with right-click → *Inspect*; the plugin's `console.log`
+  shows up there.
+- Edited `main.js`? **Settings → Plugins → Scan again** reloads it without restarting the app.
+- To iterate without Tauri: `pnpm dev:mock` runs the app in the browser with an in-memory sample
+  vault, and the *Install the example plugin* button works there too.

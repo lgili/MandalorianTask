@@ -3,44 +3,44 @@ import Dashboard from './routes/Dashboard.vue';
 
 declare module 'vue-router' {
   interface RouteMeta {
-    titulo: string;
-    /** Tecla da navegação numérica. Vazia = a rota não aparece na sidebar. */
-    tecla: string;
-    icone: string;
+    title: string;
+    /** Key for number navigation. Empty = the route does not show up in the sidebar. */
+    shortcut: string;
+    icon: string;
   }
 }
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'dashboard', component: Dashboard,
-    meta: { titulo: 'Início', tecla: '1', icone: 'home' } },
-  // Projetos vem logo depois do Início: é o agrupador de tudo o mais, e ficar
-  // enterrado em Ajustes era o motivo de o app parecer não ter projetos.
-  { path: '/projetos', name: 'projetos', component: () => import('./routes/Projects.vue'),
-    meta: { titulo: 'Projetos', tecla: '2', icone: 'folder' } },
-  { path: '/projeto/:id', name: 'projeto', component: () => import('./routes/Project.vue'),
-    meta: { titulo: 'Projeto', tecla: '', icone: 'folder' } },
-  // Notas logo depois de Projetos: são as duas metades do app — o que se faz
-  // e o que se sabe. A nota aberta vai na query (?n=pasta/nota.md): caminho
-  // com barra e acento como parâmetro de rota é briga com o encoder do router.
-  { path: '/notas', name: 'notas', component: () => import('./routes/Notes.vue'),
-    meta: { titulo: 'Notas', tecla: '3', icone: 'notebook' } },
-  { path: '/backlog', name: 'backlog', component: () => import('./routes/Capture.vue'),
-    meta: { titulo: 'Captura', tecla: '4', icone: 'inbox' } },
-  { path: '/quadro', name: 'quadro', component: () => import('./routes/Board.vue'),
-    meta: { titulo: 'Quadro', tecla: '5', icone: 'columns' } },
-  { path: '/hoje', name: 'hoje', component: () => import('./routes/Today.vue'),
-    meta: { titulo: 'Hoje', tecla: '6', icone: 'clock' } },
-  { path: '/relatorios', name: 'relatorios', component: () => import('./routes/Reports.vue'),
-    meta: { titulo: 'Relatórios', tecla: '7', icone: 'chart' } },
-  // Painel registrado por plugin (ex.: o Grafo). O plugin monta o conteúdo.
-  { path: '/plugin/:plugin/:painel', name: 'plugin', component: () => import('./routes/Plugin.vue'),
-    meta: { titulo: 'Plugin', tecla: '', icone: 'puzzle' } },
-  // Ajustes sai da navegação numerada e vive no rodapé da sidebar: é
-  // configuração, não um destino de trabalho.
-  { path: '/ajustes', name: 'ajustes', component: () => import('./routes/Settings.vue'),
-    meta: { titulo: 'Ajustes', tecla: '', icone: 'settings' } },
+    meta: { title: 'Home', shortcut: '1', icon: 'home' } },
+  // Projects comes right after Home: it groups everything else, and being
+  // buried in Settings was why the app seemed to have no projects.
+  { path: '/projects', name: 'projects', component: () => import('./routes/Projects.vue'),
+    meta: { title: 'Projects', shortcut: '2', icon: 'folder' } },
+  { path: '/project/:id', name: 'project', component: () => import('./routes/Project.vue'),
+    meta: { title: 'Project', shortcut: '', icon: 'folder' } },
+  // Notes right after Projects: they are the two halves of the app — what you do
+  // and what you know. The open note goes in the query (?note=folder/note.md): a path
+  // with slashes and accents as a route param is a fight with the router's encoder.
+  { path: '/notes', name: 'notes', component: () => import('./routes/Notes.vue'),
+    meta: { title: 'Notes', shortcut: '3', icon: 'notebook' } },
+  { path: '/capture', name: 'capture', component: () => import('./routes/Capture.vue'),
+    meta: { title: 'Capture', shortcut: '4', icon: 'inbox' } },
+  { path: '/board', name: 'board', component: () => import('./routes/Board.vue'),
+    meta: { title: 'Board', shortcut: '5', icon: 'columns' } },
+  { path: '/today', name: 'today', component: () => import('./routes/Today.vue'),
+    meta: { title: 'Today', shortcut: '6', icon: 'clock' } },
+  { path: '/reports', name: 'reports', component: () => import('./routes/Reports.vue'),
+    meta: { title: 'Reports', shortcut: '7', icon: 'chart' } },
+  // Panel registered by a plugin (e.g. the Graph). The plugin mounts the content.
+  { path: '/plugin/:plugin/:panel', name: 'plugin', component: () => import('./routes/Plugin.vue'),
+    meta: { title: 'Plugin', shortcut: '', icon: 'puzzle' } },
+  // Settings leaves the numbered navigation and lives in the sidebar footer: it is
+  // configuration, not a place you go to work.
+  { path: '/settings', name: 'settings', component: () => import('./routes/Settings.vue'),
+    meta: { title: 'Settings', shortcut: '', icon: 'settings' } },
 ];
 
 export const router = createRouter({ history: createWebHistory(), routes });
 
-router.afterEach((to) => { document.title = `${to.meta.titulo} — Bancada`; });
+router.afterEach((to) => { document.title = `${to.meta.title} — Bancada`; });

@@ -1,375 +1,374 @@
 <script setup lang="ts">
-// Notas: o vault de markdown.
+// Notes: the markdown vault.
 //
-// Os arquivos .md numa pasta são a VERDADE; o SQLite guarda só um índice
-// reconstruível (notes + FTS5). O Obsidian de verdade abre o mesmo vault, e
-// as notas continuam legíveis no dia em que este app morrer. (Decisão da v0.3,
-// mantida.)
+// The .md files in a folder are the TRUTH; SQLite keeps only a rebuildable
+// index (notes + FTS5). Real Obsidian opens the same vault, and the notes stay
+// readable the day this app dies. (Decision from v0.3, kept.)
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { useDebounceFn } from '@vueuse/core';
 import { FolderOpen, FilePlus, Search, Trash2, X, Link2, FolderPlus } from 'lucide-vue-next';
-import ArvoreNotas from '../components/NoteTree.vue';
-import ChipProjeto from '../components/ProjectChip.vue';
-import EditorMarkdown from '../components/MarkdownEditor.vue';
-import type { NotaResumo, ResultadoBusca } from '../lib/types';
+import NoteTree from '../components/NoteTree.vue';
+import ProjectChip from '../components/ProjectChip.vue';
+import MarkdownEditor from '../components/MarkdownEditor.vue';
+import type { NoteSummary, SearchResult } from '../lib/types';
 import * as api from '../lib/db';
 import {
-  apagaNota, criaNota, criaVaultPadrao, escolheVault, leNota, linksPara, notaAberta, notas, renomeiaNota,
-  resolve, salvaNota, segueLink, sincronizando, vaultAberto,
+  deleteNote, createNote, createDefaultVault, pickVault, readNote, listBacklinks, activeNote, notes, renameNote,
+  resolve, saveNote, followLink, syncing, vaultPath,
 } from '../lib/notes';
-import { nomeArquivo } from '../lib/markdown';
-import { emite, escuta } from '../lib/events';
+import { noteName } from '../lib/markdown';
+import { emitEvent, onEvent } from '../lib/events';
 import { toast } from '../lib/toast';
-import { relativo } from '../lib/time';
+import { fmtRelative } from '../lib/time';
 
 const route = useRoute();
 const router = useRouter();
 
-const path = computed(() => (typeof route.query.n === 'string' ? route.query.n : null));
-const atual = computed<NotaResumo | null>(() => notas.value.find((n) => n.path === path.value) ?? null);
-const pasta = computed(() => (path.value?.includes('/') ? path.value.slice(0, path.value.lastIndexOf('/')) : ''));
+const path = computed(() => (typeof route.query.note === 'string' ? route.query.note : null));
+const current = computed<NoteSummary | null>(() => notes.value.find((n) => n.path === path.value) ?? null);
+const folder = computed(() => (path.value?.includes('/') ? path.value.slice(0, path.value.lastIndexOf('/')) : ''));
 
-const editor = ref<InstanceType<typeof EditorMarkdown> | null>(null);
-const texto = ref('');
+const editor = ref<InstanceType<typeof MarkdownEditor> | null>(null);
+const text = ref('');
 /**
- * Caminho cujo texto está em `texto` — o save nunca pode ir para a nota errada.
- * É ref porque é a `key` do editor: trocar de nota RECRIA o editor, senão o
- * Ctrl+Z de uma nota desfaria texto da anterior.
+ * Path whose text is in `text` — a save can never go to the wrong note.
+ * It is a ref because it is the editor's `key`: switching notes RECREATES the
+ * editor, otherwise Ctrl+Z in one note would undo text from the previous one.
  */
-const carregado = ref<string | null>(null);
-const versao = ref(0);
-const sujo = ref(false);
-const salvando = ref(false);
-const entrada = ref<NotaResumo[]>([]);
+const loadedPath = ref<string | null>(null);
+const notesVersion = ref(0);
+const dirty = ref(false);
+const saving = ref(false);
+const incoming = ref<NoteSummary[]>([]);
 
-// ── abrir e salvar ────────────────────────────────────────────────────────
+// ── open and save ─────────────────────────────────────────────────────────
 
-/** Verdadeiro enquanto o save é DESTA tela — o eco dele não é "escrita de fora". */
-let meuSave = false;
+/** True while the save comes FROM THIS screen — its echo is not an "outside write". */
+let ownSave = false;
 
-async function salvaAgora(): Promise<void> {
-  if (!sujo.value || !carregado.value) return;
-  const p = carregado.value;
-  const t = texto.value;
-  sujo.value = false;
-  salvando.value = true;
-  meuSave = true;
+async function saveNow(): Promise<void> {
+  if (!dirty.value || !loadedPath.value) return;
+  const p = loadedPath.value;
+  const t = text.value;
+  dirty.value = false;
+  saving.value = true;
+  ownSave = true;
   try {
-    await salvaNota(p, t);
+    await saveNote(p, t);
   } catch (e) {
-    sujo.value = true;
-    toast.erro(`Não salvou: ${e instanceof Error ? e.message : String(e)}`);
+    dirty.value = true;
+    toast.error(`Not saved: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
-    salvando.value = false;
-    meuSave = false;
+    saving.value = false;
+    ownSave = false;
   }
 }
-/** 600 ms depois da última tecla: rápido o bastante para não perder nada. */
-const salvaLogo = useDebounceFn(salvaAgora, 600);
+/** 600 ms after the last keystroke: fast enough not to lose anything. */
+const saveSoon = useDebounceFn(saveNow, 600);
 
-function editou(t: string): void {
-  texto.value = t;
-  sujo.value = true;
-  void salvaLogo();
+function onEdit(t: string): void {
+  text.value = t;
+  dirty.value = true;
+  void saveSoon();
 }
 
-async function abre(p: string | null): Promise<void> {
-  await salvaAgora();   // a nota anterior sai salva, sempre
-  carregado.value = null;
-  notaAberta.value = null;
-  entrada.value = [];
-  if (!p) { texto.value = ''; return; }
+async function openNote(p: string | null): Promise<void> {
+  await saveNow();   // the previous note always leaves saved
+  loadedPath.value = null;
+  activeNote.value = null;
+  incoming.value = [];
+  if (!p) { text.value = ''; return; }
   try {
-    texto.value = await leNota(p);
-    carregado.value = p;
-    notaAberta.value = p;
-    sujo.value = false;
-    entrada.value = await linksPara(p);
-    emite('nota:aberta', { path: p });
+    text.value = await readNote(p);
+    loadedPath.value = p;
+    activeNote.value = p;
+    dirty.value = false;
+    incoming.value = await listBacklinks(p);
+    emitEvent('note:opened', { path: p });
   } catch {
-    toast.erro('Essa nota não existe mais.');
+    toast.error('That note no longer exists.');
     router.replace({ query: {} });
   }
 }
 
-watch(path, (p) => { void abre(p); }, { immediate: true });
+watch(path, (p) => { void openNote(p); }, { immediate: true });
 
-// Recarrega os "links para esta nota" quando qualquer nota muda.
-watch(notas, async () => {
-  versao.value++;
-  if (carregado.value) entrada.value = await linksPara(carregado.value);
+// Reload the "links to this note" whenever any note changes.
+watch(notes, async () => {
+  notesVersion.value++;
+  if (loadedPath.value) incoming.value = await listBacklinks(loadedPath.value);
 });
 
-// Mudou no disco por fora (Obsidian, git): recarrega se não há edição pendente.
-const paraDeEscutarExterna = escuta('nota:externa', async ({ path: p }) => {
-  if (p !== carregado.value || sujo.value) return;
-  texto.value = await leNota(p);
+// Changed on disk from outside (Obsidian, git): reload if there is no pending edit.
+const stopExternal = onEvent('note:external', async ({ path: p }) => {
+  if (p !== loadedPath.value || dirty.value) return;
+  text.value = await readNote(p);
 });
-// Um PLUGIN escreveu na nota aberta: o editor adota o texto novo. Sem isto o
-// próximo autosave desta tela gravaria o texto antigo por cima do do plugin.
-const paraDeEscutarSalva = escuta('nota:salva', ({ path: p, texto: t }) => {
-  if (meuSave || p !== carregado.value || t === texto.value) return;
-  texto.value = t;
-  sujo.value = false;
+// A PLUGIN wrote to the open note: the editor adopts the new text. Without this
+// the next autosave from this screen would write the old text over the plugin's.
+const stopSaved = onEvent('note:saved', ({ path: p, text: t }) => {
+  if (ownSave || p !== loadedPath.value || t === text.value) return;
+  text.value = t;
+  dirty.value = false;
 });
-const paraDeEscutar = () => { paraDeEscutarExterna(); paraDeEscutarSalva(); };
+const stopListening = () => { stopExternal(); stopSaved(); };
 
-onBeforeRouteLeave(async () => { await salvaAgora(); });
-onBeforeUnmount(() => { paraDeEscutar(); notaAberta.value = null; void salvaAgora(); });
+onBeforeRouteLeave(async () => { await saveNow(); });
+onBeforeUnmount(() => { stopListening(); activeNote.value = null; void saveNow(); });
 
 // ── links ─────────────────────────────────────────────────────────────────
 
-const opcoes = () => notas.value.map((n) => ({
-  alvo: nomeArquivo(n.path),
-  pasta: n.path.includes('/') ? n.path.slice(0, n.path.lastIndexOf('/')) : '',
+const linkOptions = () => notes.value.map((n) => ({
+  target: noteName(n.path),
+  folder: n.path.includes('/') ? n.path.slice(0, n.path.lastIndexOf('/')) : '',
 }));
-const existe = (alvo: string) => !!resolve(alvo);
+const noteExists = (target: string) => !!resolve(target);
 
-async function abreLink(alvo: string): Promise<void> {
-  await salvaAgora();
-  const antes = notas.value.length;
-  const p = await segueLink(alvo, pasta.value);
-  if (notas.value.length > antes) toast.ok(`Nota ${nomeArquivo(p)} criada`);
-  router.push({ query: { n: p } });
+async function openLink(target: string): Promise<void> {
+  await saveNow();
+  const countBefore = notes.value.length;
+  const p = await followLink(target, folder.value);
+  if (notes.value.length > countBefore) toast.ok(`Note ${noteName(p)} created`);
+  router.push({ query: { note: p } });
 }
 
-function abreTag(tag: string): void {
-  busca.value = tag;
-  campoBusca.value?.focus();
+function openTag(tag: string): void {
+  search.value = tag;
+  searchInput.value?.focus();
 }
 
-// ── título = nome do arquivo ──────────────────────────────────────────────
+// ── title = file name ─────────────────────────────────────────────────────
 
-const titulo = ref('');
-const campoTitulo = ref<HTMLInputElement | null>(null);
-watch(path, (p) => { titulo.value = p ? nomeArquivo(p) : ''; }, { immediate: true });
+const title = ref('');
+const titleInput = ref<HTMLInputElement | null>(null);
+watch(path, (p) => { title.value = p ? noteName(p) : ''; }, { immediate: true });
 
-async function renomeia(): Promise<void> {
-  if (!carregado.value) return;
-  const novoNome = titulo.value.trim();
-  if (!novoNome || novoNome === nomeArquivo(carregado.value)) { titulo.value = nomeArquivo(carregado.value); return; }
-  await salvaAgora();
+async function renameCurrent(): Promise<void> {
+  if (!loadedPath.value) return;
+  const newName = title.value.trim();
+  if (!newName || newName === noteName(loadedPath.value)) { title.value = noteName(loadedPath.value); return; }
+  await saveNow();
   try {
-    const qtdAntes = entrada.value.length;
-    const novo = await renomeiaNota(carregado.value, novoNome);
-    if (qtdAntes) toast.ok(`Renomeada — ${qtdAntes} ${qtdAntes === 1 ? 'link atualizado' : 'links atualizados'}`);
-    router.replace({ query: { n: novo } });
+    const linkCount = incoming.value.length;
+    const newPath = await renameNote(loadedPath.value, newName);
+    if (linkCount) toast.ok(`Renamed — ${linkCount} ${linkCount === 1 ? 'link updated' : 'links updated'}`);
+    router.replace({ query: { note: newPath } });
   } catch (e) {
-    toast.erro(e instanceof Error ? e.message : String(e));
-    titulo.value = nomeArquivo(carregado.value);
+    toast.error(e instanceof Error ? e.message : String(e));
+    title.value = noteName(loadedPath.value);
   }
 }
 
-function tituloEnter(): void {
-  campoTitulo.value?.blur();   // o blur chama renomeia
-  editor.value?.foca();
+function onTitleEnter(): void {
+  titleInput.value?.blur();   // the blur calls renameCurrent
+  editor.value?.focus();
 }
 
-// ── criar e apagar ────────────────────────────────────────────────────────
+// ── create and delete ─────────────────────────────────────────────────────
 
-async function nova(emPasta = pasta.value): Promise<void> {
-  await salvaAgora();
-  const p = await criaNota('Sem título', { pasta: emPasta });
-  await router.push({ query: { n: p } });
+async function newNote(inFolder = folder.value): Promise<void> {
+  await saveNow();
+  const p = await createNote('Untitled', { folder: inFolder });
+  await router.push({ query: { note: p } });
   await nextTick();
-  campoTitulo.value?.focus();
-  campoTitulo.value?.select();
+  titleInput.value?.focus();
+  titleInput.value?.select();
 }
 
-const confirmandoApagar = ref(false);
-async function apaga(): Promise<void> {
-  if (!carregado.value) return;
-  const p = carregado.value;
-  sujo.value = false;
-  carregado.value = null;
-  confirmandoApagar.value = false;
-  await apagaNota(p);
-  toast.ok(`${nomeArquivo(p)} foi para a lixeira do vault (.trash)`);
+const confirmingDelete = ref(false);
+async function deleteCurrent(): Promise<void> {
+  if (!loadedPath.value) return;
+  const p = loadedPath.value;
+  dirty.value = false;
+  loadedPath.value = null;
+  confirmingDelete.value = false;
+  await deleteNote(p);
+  toast.ok(`${noteName(p)} moved to the vault trash (.trash)`);
   router.replace({ query: {} });
 }
-watch(path, () => { confirmandoApagar.value = false; });
+watch(path, () => { confirmingDelete.value = false; });
 
-// ── busca ─────────────────────────────────────────────────────────────────
+// ── search ────────────────────────────────────────────────────────────────
 
-const busca = ref('');
-const campoBusca = ref<HTMLInputElement | null>(null);
-const resultados = ref<ResultadoBusca[]>([]);
-const buscaAgora = useDebounceFn(async (q: string) => {
-  resultados.value = q.trim() ? await api.buscaNotas(q) : [];
+const search = ref('');
+const searchInput = ref<HTMLInputElement | null>(null);
+const results = ref<SearchResult[]>([]);
+const runSearch = useDebounceFn(async (q: string) => {
+  results.value = q.trim() ? await api.searchNotes(q) : [];
 }, 120);
-watch(busca, (q) => { void buscaAgora(q); });
+watch(search, (q) => { void runSearch(q); });
 
-/** O snippet do FTS5 marca os termos com os caracteres de controle 2 e 3. */
-const INI = String.fromCharCode(2);
-const FIM = String.fromCharCode(3);
+/** The FTS5 snippet marks the matched terms with control characters 2 and 3. */
+const MARK_START = String.fromCharCode(2);
+const MARK_END = String.fromCharCode(3);
 
-/** Trecho do FTS em pedaços, para destacar os termos achados. */
-function pedacos(t: string): Array<{ s: string; realce: boolean }> {
-  const out: Array<{ s: string; realce: boolean }> = [];
+/** The FTS snippet split into pieces, so the matched terms can be highlighted. */
+function snippetParts(t: string): Array<{ s: string; highlight: boolean }> {
+  const out: Array<{ s: string; highlight: boolean }> = [];
   let i = 0;
   while (i < t.length) {
-    const a = t.indexOf(INI, i);
-    if (a < 0) { out.push({ s: t.slice(i), realce: false }); break; }
-    if (a > i) out.push({ s: t.slice(i, a), realce: false });
-    const b = t.indexOf(FIM, a + 1);
-    if (b < 0) { out.push({ s: t.slice(a + 1), realce: false }); break; }
-    out.push({ s: t.slice(a + 1, b), realce: true });
+    const a = t.indexOf(MARK_START, i);
+    if (a < 0) { out.push({ s: t.slice(i), highlight: false }); break; }
+    if (a > i) out.push({ s: t.slice(i, a), highlight: false });
+    const b = t.indexOf(MARK_END, a + 1);
+    if (b < 0) { out.push({ s: t.slice(a + 1), highlight: false }); break; }
+    out.push({ s: t.slice(a + 1, b), highlight: true });
     i = b + 1;
   }
   return out;
 }
 
-// ── vazio ─────────────────────────────────────────────────────────────────
+// ── empty ─────────────────────────────────────────────────────────────────
 
-const recentes = computed(() => notas.value.slice(0, 8));
+const recent = computed(() => notes.value.slice(0, 8));
 
-async function abrePasta(): Promise<void> {
-  if (await escolheVault()) toast.ok(`Vault aberto: ${notas.value.length} notas`);
+async function openFolder(): Promise<void> {
+  if (await pickVault()) toast.ok(`Vault opened: ${notes.value.length} notes`);
 }
-async function criaPadrao(): Promise<void> {
-  if (await criaVaultPadrao()) {
-    toast.ok('Vault criado em Documentos/Bancada');
-    const bv = notas.value[0];
-    if (bv) router.push({ query: { n: bv.path } });
+async function createDefault(): Promise<void> {
+  if (await createDefaultVault()) {
+    toast.ok('Vault created in Documents/Bancada');
+    const welcome = notes.value[0];
+    if (welcome) router.push({ query: { note: welcome.path } });
   }
 }
 
-onMounted(() => { if (!path.value) campoBusca.value?.focus(); });
+onMounted(() => { if (!path.value) searchInput.value?.focus(); });
 </script>
 
 <template>
-  <!-- ── sem vault ── -->
-  <div v-if="!vaultAberto" class="grid min-h-0 flex-1 place-items-center p-8">
+  <!-- ── no vault ── -->
+  <div v-if="!vaultPath" class="grid min-h-0 flex-1 place-items-center p-8">
     <div class="max-w-[460px] text-center">
-      <h1 class="display m-0 text-[32px] leading-none">Notas</h1>
+      <h1 class="display m-0 text-[32px] leading-none">Notes</h1>
       <p class="mt-3 text-[14px] leading-relaxed text-fg-muted">
-        Cada nota é um arquivo <code class="med rounded bg-surface-2 px-1 py-0.5 text-[12px]">.md</code>
-        numa pasta sua. Se você usa o Obsidian, aponte para o mesmo vault — os dois apps
-        leem e escrevem os mesmos arquivos.
+        Each note is a <code class="mono rounded bg-surface-2 px-1 py-0.5 text-[12px]">.md</code>
+        file in a folder of yours. If you use Obsidian, point it at the same vault — both apps
+        read and write the same files.
       </p>
       <div class="mt-6 flex flex-col items-center gap-2">
-        <button class="btn btn-accent" @click="abrePasta"><FolderOpen class="h-4 w-4" />Abrir uma pasta existente</button>
-        <button class="btn btn-ghost" @click="criaPadrao"><FolderPlus class="h-4 w-4" />Criar vault novo em Documentos</button>
+        <button class="btn btn-accent" @click="openFolder"><FolderOpen class="h-4 w-4" />Open an existing folder</button>
+        <button class="btn btn-ghost" @click="createDefault"><FolderPlus class="h-4 w-4" />Create a new vault in Documents</button>
       </div>
     </div>
   </div>
 
   <div v-else class="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)] max-[900px]:grid-cols-[200px_minmax(0,1fr)]">
-    <!-- ── coluna da esquerda: busca + árvore ── -->
+    <!-- ── left column: search + tree ── -->
     <aside class="flex min-h-0 flex-col border-r border-rule bg-surface-2/40">
       <div class="flex-none space-y-2 p-3">
         <div class="relative">
           <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
-          <input ref="campoBusca" v-model="busca" class="inp !py-1.5 !pl-8 !text-[12px]"
-            placeholder="buscar nas notas…" spellcheck="false" @keydown.esc="busca = ''">
-          <button v-if="busca" class="absolute right-2 top-1/2 -translate-y-1/2 text-fg-subtle hover:text-fg"
-            @click="busca = ''"><X class="h-3.5 w-3.5" /></button>
+          <input ref="searchInput" v-model="search" class="inp !py-1.5 !pl-8 !text-[12px]"
+            placeholder="search notes…" spellcheck="false" @keydown.esc="search = ''">
+          <button v-if="search" class="absolute right-2 top-1/2 -translate-y-1/2 text-fg-subtle hover:text-fg"
+            @click="search = ''"><X class="h-3.5 w-3.5" /></button>
         </div>
-        <button class="btn w-full justify-center !py-1.5" @click="nova()">
-          <FilePlus class="h-3.5 w-3.5" />Nova nota
+        <button class="btn w-full justify-center !py-1.5" @click="newNote()">
+          <FilePlus class="h-3.5 w-3.5" />New note
         </button>
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        <!-- resultados de busca -->
-        <template v-if="busca.trim()">
-          <p v-if="!resultados.length" class="px-2 py-4 text-[12px] text-fg-subtle">Nada com “{{ busca }}”.</p>
-          <button v-for="r in resultados" :key="r.path" type="button"
+        <!-- search results -->
+        <template v-if="search.trim()">
+          <p v-if="!results.length" class="px-2 py-4 text-[12px] text-fg-subtle">Nothing for “{{ search }}”.</p>
+          <button v-for="r in results" :key="r.path" type="button"
             class="block w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-3/50"
             :class="r.path === path && 'bg-surface-3/80'"
-            @click="router.push({ query: { n: r.path } })">
+            @click="router.push({ query: { note: r.path } })">
             <div class="truncate text-[12px] font-medium text-fg">{{ r.title }}</div>
             <div class="mt-0.5 line-clamp-2 text-[11px] leading-snug text-fg-subtle">
-              <template v-for="(p, i) in pedacos(r.trecho)" :key="i">
-                <mark v-if="p.realce" class="rounded-sm bg-accent/25 px-0.5 text-fg">{{ p.s }}</mark>
+              <template v-for="(p, i) in snippetParts(r.snippet)" :key="i">
+                <mark v-if="p.highlight" class="rounded-sm bg-accent/25 px-0.5 text-fg">{{ p.s }}</mark>
                 <template v-else>{{ p.s }}</template>
               </template>
             </div>
           </button>
         </template>
 
-        <ArvoreNotas v-else :notas="notas" :atual="path" @abre="(p) => router.push({ query: { n: p } })" />
+        <NoteTree v-else :notes="notes" :current="path" @open="(p) => router.push({ query: { note: p } })" />
       </div>
 
       <div class="flex-none truncate border-t border-rule px-3 py-1.5 font-mono text-[11px] text-fg-subtle"
-        :title="vaultAberto">
-        {{ sincronizando ? 'indexando…' : `${notas.length} notas` }} · {{ vaultAberto.split(/[\\/]/).pop() }}
+        :title="vaultPath">
+        {{ syncing ? 'indexing…' : `${notes.length} notes` }} · {{ vaultPath.split(/[\\/]/).pop() }}
       </div>
     </aside>
 
-    <!-- ── nota aberta ── -->
+    <!-- ── open note ── -->
     <section class="min-h-0 overflow-y-auto">
       <div v-if="path" class="mx-auto max-w-[760px] px-10 pb-[35vh] pt-8">
         <div class="mb-1 flex items-center gap-2 font-mono text-[11px] text-fg-subtle">
-          <span class="truncate">{{ pasta || 'raiz' }}</span>
-          <span class="ml-auto">{{ salvando ? 'salvando…' : sujo ? 'editando' : 'salvo' }}</span>
-          <button class="rounded p-1 hover:bg-surface-3 hover:text-danger" title="Apagar nota"
-            @click="confirmandoApagar = true"><Trash2 class="h-3.5 w-3.5" /></button>
+          <span class="truncate">{{ folder || 'root' }}</span>
+          <span class="ml-auto">{{ saving ? 'saving…' : dirty ? 'editing' : 'saved' }}</span>
+          <button class="rounded p-1 hover:bg-surface-3 hover:text-danger" title="Delete note"
+            @click="confirmingDelete = true"><Trash2 class="h-3.5 w-3.5" /></button>
         </div>
 
-        <!-- título = nome do arquivo (inline title do Obsidian) -->
-        <input ref="campoTitulo" v-model="titulo" spellcheck="false"
+        <!-- title = file name (Obsidian's inline title) -->
+        <input ref="titleInput" v-model="title" spellcheck="false"
           class="w-full bg-transparent text-[32px] font-semibold leading-tight tracking-[-0.02em] text-fg outline-none
                  placeholder:text-fg-subtle"
-          placeholder="Sem título"
-          @blur="renomeia" @keydown.enter.prevent="tituloEnter" @keydown.esc="titulo = nomeArquivo(path!)">
+          placeholder="Untitled"
+          @blur="renameCurrent" @keydown.enter.prevent="onTitleEnter" @keydown.esc="title = noteName(path!)">
 
         <div class="mb-6 mt-2 flex flex-wrap items-center gap-2 text-[12px] text-fg-subtle">
-          <button v-if="atual?.project_id" class="hover:underline" @click="router.push(`/projeto/${atual.project_id}`)">
-            <ChipProjeto variante="linha" :nome="atual.project_name" :cor="atual.project_color" />
+          <button v-if="current?.project_id" class="hover:underline" @click="router.push(`/project/${current.project_id}`)">
+            <ProjectChip variant="line" :name="current.project_name" :color="current.project_color" />
           </button>
-          <span v-for="t in atual?.tags ?? []" :key="t"
+          <span v-for="t in current?.tags ?? []" :key="t"
             class="cursor-pointer rounded-full bg-accent/10 px-2 py-px text-[11px] text-accent-ink hover:bg-accent/20"
-            @click="abreTag(t)">#{{ t }}</span>
-          <span v-if="atual" class="ml-auto font-mono text-[11px]">editada {{ relativo(new Date(atual.mtime).toISOString()) }}</span>
+            @click="openTag(t)">#{{ t }}</span>
+          <span v-if="current" class="ml-auto font-mono text-[11px]">edited {{ fmtRelative(new Date(current.mtime).toISOString()) }}</span>
         </div>
 
-        <div v-if="confirmandoApagar" class="painel mb-5 flex flex-wrap items-center gap-3 !border-danger/40 p-3 text-[12px]">
-          <span>Mandar <b>{{ nomeArquivo(path) }}</b> para a lixeira do vault?
-            <span v-if="entrada.length" class="text-warn">{{ entrada.length }} {{ entrada.length === 1 ? 'nota aponta' : 'notas apontam' }} para ela.</span>
+        <div v-if="confirmingDelete" class="panel mb-5 flex flex-wrap items-center gap-3 !border-danger/40 p-3 text-[12px]">
+          <span>Move <b>{{ noteName(path) }}</b> to the vault trash?
+            <span v-if="incoming.length" class="text-warn">{{ incoming.length }} {{ incoming.length === 1 ? 'note links' : 'notes link' }} to it.</span>
           </span>
-          <button class="btn btn-perigo ml-auto" @click="apaga">Apagar</button>
-          <button class="btn" @click="confirmandoApagar = false">Cancelar</button>
+          <button class="btn btn-danger ml-auto" @click="deleteCurrent">Delete</button>
+          <button class="btn" @click="confirmingDelete = false">Cancel</button>
         </div>
 
-        <EditorMarkdown ref="editor" :key="carregado ?? 'vazio'" :model-value="texto"
-          :opcoes="opcoes" :existe="existe" :versao-notas="versao"
-          placeholder="Comece a escrever. [[ para linkar outra nota, # para tag."
-          @update:model-value="editou" @abre-link="abreLink" @abre-tag="abreTag" />
+        <MarkdownEditor ref="editor" :key="loadedPath ?? 'empty'" :model-value="text"
+          :link-options="linkOptions" :note-exists="noteExists" :notes-version="notesVersion"
+          placeholder="Start writing. [[ to link another note, # for a tag."
+          @update:model-value="onEdit" @open-link="openLink" @open-tag="openTag" />
 
-        <!-- quem aponta para esta nota -->
-        <div v-if="entrada.length" class="mt-10 border-t border-rule pt-4">
-          <div class="rot mb-2 flex items-center gap-1.5"><Link2 class="h-3.5 w-3.5" />
-            Links para esta nota · {{ entrada.length }}</div>
-          <button v-for="n in entrada" :key="n.path" type="button"
+        <!-- who links to this note -->
+        <div v-if="incoming.length" class="mt-10 border-t border-rule pt-4">
+          <div class="label mb-2 flex items-center gap-1.5"><Link2 class="h-3.5 w-3.5" />
+            Links to this note · {{ incoming.length }}</div>
+          <button v-for="n in incoming" :key="n.path" type="button"
             class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[14px] transition-colors hover:bg-surface"
-            @click="router.push({ query: { n: n.path } })">
-            <ChipProjeto variante="ponto" :cor="n.project_color" />
+            @click="router.push({ query: { note: n.path } })">
+            <ProjectChip variant="dot" :color="n.project_color" />
             <span class="truncate">{{ n.title }}</span>
             <span class="ml-auto truncate font-mono text-[11px] text-fg-subtle">{{ n.path.split('/').slice(0, -1).join('/') }}</span>
           </button>
         </div>
       </div>
 
-      <!-- nenhuma nota aberta: recentes -->
+      <!-- no note open: recent ones -->
       <div v-else class="mx-auto max-w-[560px] px-10 pt-16">
-        <h1 class="display m-0 text-[32px] leading-none">Notas</h1>
+        <h1 class="display m-0 text-[32px] leading-none">Notes</h1>
         <p class="mt-2 text-[14px] text-fg-muted">
-          {{ notas.length }} {{ notas.length === 1 ? 'nota' : 'notas' }} no vault.
-          Ctrl+K busca em tudo.
+          {{ notes.length }} {{ notes.length === 1 ? 'note' : 'notes' }} in the vault.
+          Ctrl+K searches everything.
         </p>
-        <div class="rot mb-2 mt-8">Editadas por último</div>
-        <div class="painel">
-          <button v-for="n in recentes" :key="n.path" class="linha w-full grid-cols-[12px_minmax(0,1fr)_auto] text-left"
-            @click="router.push({ query: { n: n.path } })">
-            <ChipProjeto variante="ponto" :cor="n.project_color" />
+        <div class="label mb-2 mt-8">Recently edited</div>
+        <div class="panel">
+          <button v-for="n in recent" :key="n.path" class="row w-full grid-cols-[12px_minmax(0,1fr)_auto] text-left"
+            @click="router.push({ query: { note: n.path } })">
+            <ProjectChip variant="dot" :color="n.project_color" />
             <span class="truncate text-[14px]">{{ n.title }}</span>
-            <span class="font-mono text-[11px] text-fg-subtle">{{ relativo(new Date(n.mtime).toISOString()) }}</span>
+            <span class="font-mono text-[11px] text-fg-subtle">{{ fmtRelative(new Date(n.mtime).toISOString()) }}</span>
           </button>
-          <p v-if="!recentes.length" class="px-4 py-6 text-center text-[12px] text-fg-subtle">Vault vazio.</p>
+          <p v-if="!recent.length" class="px-4 py-6 text-center text-[12px] text-fg-subtle">Empty vault.</p>
         </div>
-        <button class="btn btn-accent mt-4" @click="nova('')"><FilePlus class="h-3.5 w-3.5" />Nova nota</button>
+        <button class="btn btn-accent mt-4" @click="newNote('')"><FilePlus class="h-3.5 w-3.5" />New note</button>
       </div>
     </section>
   </div>

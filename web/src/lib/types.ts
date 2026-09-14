@@ -1,28 +1,28 @@
-// Espelhos TS das tabelas. Mantidos à mão: o schema é pequeno e um gerador
-// seria mais peça para manter do que economia.
+// TS mirrors of the tables. Kept by hand: the schema is small, and a generator
+// would be one more part to maintain rather than a saving.
 
-export type TaskStatus = 'backlog' | 'fila' | 'fazendo' | 'feito';
-export type TaskKind = 'trabalho' | 'reuniao' | 'admin';
+export type TaskStatus = 'backlog' | 'queued' | 'doing' | 'done';
+export type TaskKind = 'work' | 'meeting' | 'admin';
 export type SessionSource = 'auto' | 'manual';
-export type Outcome = 'entregue' | 'descartada' | 'repassada' | 'revertida';
+export type Outcome = 'delivered' | 'dropped' | 'handed_off' | 'reverted';
 
 export const OUTCOMES: Array<{ id: Outcome; label: string; desc: string }> = [
-  { id: 'entregue',   label: 'Entregue',   desc: 'saiu do jeito que devia' },
-  { id: 'descartada', label: 'Descartada', desc: 'não valia o custo' },
-  { id: 'repassada',  label: 'Repassada',  desc: 'outra pessoa assumiu' },
-  { id: 'revertida',  label: 'Revertida',  desc: 'voltou atrás, precisa repensar' },
+  { id: 'delivered',  label: 'Delivered',  desc: 'came out the way it should' },
+  { id: 'dropped',    label: 'Dropped',    desc: 'not worth the cost' },
+  { id: 'handed_off', label: 'Handed off', desc: 'someone else took it over' },
+  { id: 'reverted',   label: 'Reverted',   desc: 'rolled back, needs rethinking' },
 ];
 
 export const STATUS: Array<{ id: TaskStatus; label: string }> = [
   { id: 'backlog', label: 'Backlog' },
-  { id: 'fila', label: 'Fila' },
-  { id: 'fazendo', label: 'Fazendo' },
-  { id: 'feito', label: 'Feito' },
+  { id: 'queued', label: 'Queue' },
+  { id: 'doing', label: 'Doing' },
+  { id: 'done', label: 'Done' },
 ];
 
 export const KINDS: Array<{ id: TaskKind; label: string }> = [
-  { id: 'trabalho', label: 'Trabalho' },
-  { id: 'reuniao', label: 'Reunião' },
+  { id: 'work', label: 'Work' },
+  { id: 'meeting', label: 'Meeting' },
   { id: 'admin', label: 'Admin' },
 ];
 
@@ -44,12 +44,12 @@ export interface Task {
   pos: number;
   due_at: string | null;
   notes: string | null;
-  /** Quando foi capturada — em geral, no meio de uma reunião. */
+  /** When it was captured — usually in the middle of a meeting. */
   created_at: string;
-  /** Tarefa que estava rodando quando esta foi capturada. */
-  origem_id: number | null;
+  /** The task that was running when this one was captured. */
+  origin_id: number | null;
   queued_at: string | null;
-  /** PRIMEIRA vez que entrou em 'fazendo'. Base do cycle time. */
+  /** FIRST time it entered 'doing'. The basis of cycle time. */
   started_at: string | null;
   done_at: string | null;
   archived_at: string | null;
@@ -57,27 +57,27 @@ export interface Task {
   outcome_note: string | null;
 }
 
-export interface Transition { id: number; task_id: number; de: TaskStatus | null; para: TaskStatus; at: string }
+export interface Transition { id: number; task_id: number; from_status: TaskStatus | null; to_status: TaskStatus; at: string }
 
-/** Tarefa com o que a UI precisa junto: projeto e tempo acumulado. */
+/** Task plus what the UI needs alongside it: project and accumulated time. */
 export interface TaskCard extends Task {
   project_name: string | null;
   project_code: string | null;
   project_color: string | null;
-  /** Minutos de sessões FECHADAS. A aberta é contada ao vivo na UI. */
-  minutos: number;
-  /** Quantas vezes já foi trabalhada. Revela tarefa que vive sendo retomada. */
-  sessoes: number;
-  /** Título do que estava rodando na captura — em geral, a reunião. */
-  origem_title: string | null;
-  origem_kind: TaskKind | null;
+  /** Minutes from CLOSED sessions. The open one is counted live in the UI. */
+  minutes: number;
+  /** How many times it has been worked on. Exposes the task that keeps getting picked back up. */
+  session_count: number;
+  /** Title of what was running at capture time — usually the meeting. */
+  origin_title: string | null;
+  origin_kind: TaskKind | null;
 }
 
 export interface Session {
   id: number;
   task_id: number;
   started_at: string;
-  /** NULL = rodando agora. */
+  /** NULL = running now. */
   ended_at: string | null;
   tz: string;
   source: SessionSource;
@@ -85,7 +85,7 @@ export interface Session {
   created_at: string;
 }
 
-/** Sessão com o contexto da tarefa, para a timeline e o rodapé. */
+/** Session with its task's context, for the timeline and the footer. */
 export interface SessionCard extends Session {
   title: string;
   kind: TaskKind;
@@ -94,47 +94,47 @@ export interface SessionCard extends Session {
   project_color: string | null;
 }
 
-export interface Totais {
-  /** Minutos fechados, no período. */
+export interface Totals {
+  /** Closed minutes, within the period. */
   total: number;
-  trabalho: number;
-  reuniao: number;
+  work: number;
+  meeting: number;
   admin: number;
 }
 
-// ── notas ──────────────────────────────────────────────────────────────────
-// O .md no disco é a verdade; estes tipos descrevem só o ÍNDICE dele.
+// ── notes ──────────────────────────────────────────────────────────────────
+// The .md on disk is the source of truth; these types describe only its INDEX.
 
-/** O que o indexador grava para uma nota. */
-export interface NotaIndice {
+/** What the indexer writes for a note. */
+export interface NoteIndexEntry {
   path: string;
   title: string;
   mtime: number;
   size: number;
-  /** Valor cru de `projeto:` no frontmatter. */
-  projeto: string | null;
+  /** Raw value of `project:` in the frontmatter. */
+  project_ref: string | null;
   tags: string[];
-  /** Texto limpo para a busca. */
+  /** Cleaned-up text for search. */
   body: string;
-  /** Alvos de [[link]] já normalizados. */
+  /** [[link]] targets, already normalized. */
   links: string[];
 }
 
-/** Nota com o projeto resolvido — o que listas e cabeçalhos mostram. */
-export interface NotaResumo {
+/** Note with its project resolved — what lists and headers show. */
+export interface NoteSummary {
   path: string;
   title: string;
   mtime: number;
-  projeto: string | null;
+  project_ref: string | null;
   tags: string[];
   project_id: number | null;
   project_name: string | null;
   project_color: string | null;
 }
 
-export interface ResultadoBusca {
+export interface SearchResult {
   path: string;
   title: string;
-  /** Trecho com os termos entre \u0002 e \u0003, para a UI destacar. */
-  trecho: string;
+  /** Snippet with the matched terms between the control chars 0x02 and 0x03, for the UI to highlight. */
+  snippet: string;
 }

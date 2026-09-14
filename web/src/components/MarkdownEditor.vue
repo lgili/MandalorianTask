@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// Editor de nota: CodeMirror 6 com live preview, [[links]] e #tags.
+// Note editor: CodeMirror 6 with live preview, [[links]] and #tags.
 //
-// O plano original (Notas.vue, v0.3) era <textarea> + preview, "CodeMirror
-// só se incomodar". Incomodou por dois motivos: textarea não tem live preview
-// — e sem ele escrever markdown parece editar código —, e plugin de editor
-// precisa de um editor extensível. O Obsidian é CodeMirror 6 pelo mesmo motivo.
+// The original plan (Notes.vue, v0.3) was <textarea> + preview, "CodeMirror
+// only if it gets in the way". It got in the way for two reasons: a textarea has
+// no live preview — and without it writing markdown feels like editing code —, and
+// editor plugins need an extensible editor. Obsidian is CodeMirror 6 for the same reason.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap, placeholder as placeholderExt, drawSelection } from '@codemirror/view';
@@ -12,26 +12,26 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { WikiLink } from '../lib/editor/wikilink';
-import { livePreview, redesenha, tags } from '../lib/editor/livePreview';
-import { destaque, temaEditor } from '../lib/editor/theme';
-import { completaLinks, type OpcaoLink } from '../lib/editor/autocomplete';
-import { extensoesDePlugin } from '../lib/editor/extensions';
+import { livePreview, redraw, tags } from '../lib/editor/livePreview';
+import { editorHighlight, editorTheme } from '../lib/editor/theme';
+import { completeLinks, type LinkOption } from '../lib/editor/autocomplete';
+import { pluginExtensions } from '../lib/editor/extensions';
 
 const props = withDefaults(defineProps<{
   modelValue: string;
-  /** Notas que o `[[` oferece. */
-  opcoes: () => OpcaoLink[];
-  /** A nota do link existe? */
-  existe: (alvo: string) => boolean;
-  /** Muda quando a lista de notas muda — força o redesenho dos links. */
-  versaoNotas?: number;
+  /** Notes that `[[` offers. */
+  linkOptions: () => LinkOption[];
+  /** Does the linked note exist? */
+  noteExists: (target: string) => boolean;
+  /** Changes when the note list changes — forces the links to redraw. */
+  notesVersion?: number;
   placeholder?: string;
-}>(), { versaoNotas: 0, placeholder: 'Comece a escrever…' });
+}>(), { notesVersion: 0, placeholder: 'Start writing…' });
 
 const emit = defineEmits<{
   'update:modelValue': [string];
-  abreLink: [alvo: string];
-  abreTag: [tag: string];
+  openLink: [target: string];
+  openTag: [tag: string];
 }>();
 
 const host = ref<HTMLDivElement | null>(null);
@@ -39,22 +39,22 @@ let view: EditorView | null = null;
 const plugins = new Compartment();
 
 /**
- * Clique num link renderizado abre a nota. Na linha do cursor (onde o link
- * aparece cru, para ser editado) só Ctrl/Cmd+clique abre — senão não daria
- * para clicar no meio do link para corrigir uma letra.
+ * Clicking a rendered link opens the note. On the cursor line (where the link
+ * shows raw, to be edited) only Ctrl/Cmd+click opens — otherwise there would be
+ * no way to click in the middle of the link to fix a letter.
  */
-const cliques = EditorView.domEventHandlers({
+const clickHandlers = EditorView.domEventHandlers({
   mousedown(e, v) {
-    const alvo = (e.target as HTMLElement).closest<HTMLElement>('.cm-wikilink');
+    const link = (e.target as HTMLElement).closest<HTMLElement>('.cm-wikilink');
     const tag = (e.target as HTMLElement).closest<HTMLElement>('.cm-tag');
-    if (!alvo && !tag) return false;
-    const pos = v.posAtDOM(alvo ?? tag!);
-    const linhaCursor = v.hasFocus && v.state.selection.ranges.some((r) =>
+    if (!link && !tag) return false;
+    const pos = v.posAtDOM(link ?? tag!);
+    const onCursorLine = v.hasFocus && v.state.selection.ranges.some((r) =>
       v.state.doc.lineAt(r.head).number === v.state.doc.lineAt(pos).number);
-    if (linhaCursor && !(e.ctrlKey || e.metaKey)) return false;
+    if (onCursorLine && !(e.ctrlKey || e.metaKey)) return false;
     e.preventDefault();
-    if (alvo?.dataset.alvo) emit('abreLink', alvo.dataset.alvo);
-    else if (tag?.dataset.tag) emit('abreTag', tag.dataset.tag);
+    if (link?.dataset.target) emit('openLink', link.dataset.target);
+    else if (tag?.dataset.tag) emit('openTag', tag.dataset.tag);
     return true;
   },
 });
@@ -70,44 +70,44 @@ onMounted(() => {
         EditorView.lineWrapping,
         closeBrackets(),
         markdown({ base: markdownLanguage, extensions: [WikiLink] }),
-        livePreview({ existe: (a) => props.existe(a) }),
+        livePreview({ noteExists: (t) => props.noteExists(t) }),
         tags,
-        destaque,
-        temaEditor,
-        autocompletion({ override: [completaLinks(() => props.opcoes())], icons: false }),
+        editorHighlight,
+        editorTheme,
+        autocompletion({ override: [completeLinks(() => props.linkOptions())], icons: false }),
         placeholderExt(props.placeholder),
-        cliques,
+        clickHandlers,
         keymap.of([...closeBracketsKeymap, ...completionKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) emit('update:modelValue', u.state.doc.toString());
         }),
-        plugins.of(extensoesDePlugin.value.map((x) => x.ext)),
+        plugins.of(pluginExtensions.value.map((x) => x.ext)),
       ],
     }),
   });
 });
 
-// Texto trocado por fora (outra nota aberta, arquivo editado no Obsidian):
-// substitui o documento, mas mantém o cursor onde dá.
-watch(() => props.modelValue, (novo) => {
-  if (!view || novo === view.state.doc.toString()) return;
-  const cab = Math.min(view.state.selection.main.head, novo.length);
-  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: novo }, selection: { anchor: cab } });
+// Text replaced from outside (another note opened, file edited in Obsidian):
+// swap the document, but keep the cursor where possible.
+watch(() => props.modelValue, (text) => {
+  if (!view || text === view.state.doc.toString()) return;
+  const head = Math.min(view.state.selection.main.head, text.length);
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: head } });
 });
 
-watch(() => props.versaoNotas, () => view?.dispatch({ effects: redesenha.of(null) }));
+watch(() => props.notesVersion, () => view?.dispatch({ effects: redraw.of(null) }));
 
-watch(extensoesDePlugin, (lista) => {
-  view?.dispatch({ effects: plugins.reconfigure(lista.map((x) => x.ext)) });
+watch(pluginExtensions, (list) => {
+  view?.dispatch({ effects: plugins.reconfigure(list.map((x) => x.ext)) });
 });
 
 onBeforeUnmount(() => { view?.destroy(); view = null; });
 
 defineExpose({
-  foca: (fim = false) => {
+  focus: (atEnd = false) => {
     if (!view) return;
     view.focus();
-    if (fim) view.dispatch({ selection: { anchor: view.state.doc.length } });
+    if (atEnd) view.dispatch({ selection: { anchor: view.state.doc.length } });
   },
 });
 </script>

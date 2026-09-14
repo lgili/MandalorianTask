@@ -2,7 +2,7 @@ const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: ['selector', ':root:not([data-theme="claro"])'],
+  darkMode: ['selector', ':root:not([data-theme="light"])'],
   content: ['./index.html', './src/**/*.{vue,ts}'],
   theme: {
     extend: {
@@ -11,9 +11,9 @@ export default {
         fg: { DEFAULT: v('fg'), muted: v('fg-muted'), subtle: v('fg-subtle') },
         rule: { DEFAULT: v('rule'), strong: v('rule-strong') },
         accent: { DEFAULT: v('accent'), ink: v('accent-ink') },
-        vivo: { DEFAULT: v('vivo'), ink: v('vivo-ink') },
+        live: { DEFAULT: v('live'), ink: v('live-ink') },
         p1: v('p1'), p2: v('p2'), p3: v('p3'), p4: v('p4'), p5: v('p5'), p6: v('p6'),
-        trabalho: v('trabalho'), reuniao: v('reuniao'), admin: v('admin'),
+        work: v('work'), meeting: v('meeting'), admin: v('admin'),
         ok: v('ok'), warn: v('warn'), danger: v('danger'),
         'on-accent': v('on-accent'),
       },
@@ -26,7 +26,7 @@ export default {
         card: '0 1px 2px rgb(var(--shadow) / .18), 0 1px 1px rgb(var(--shadow) / .08)',
         pop: '0 2px 6px rgb(var(--shadow) / .2), 0 16px 40px -16px rgb(var(--shadow) / .45)',
         glow: '0 0 0 1px rgb(var(--glow) / .35), 0 6px 20px -6px rgb(var(--glow) / .55)',
-        live: '0 0 0 1px rgb(var(--vivo) / .45), 0 0 24px -4px rgb(var(--vivo) / .45)',
+        live: '0 0 0 1px rgb(var(--live) / .45), 0 0 24px -4px rgb(var(--live) / .45)',
       },
       borderRadius: { xl: '12px', '2xl': '16px' },
     },

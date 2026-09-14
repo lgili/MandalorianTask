@@ -1,10 +1,10 @@
-/* Carregado junto com o plugin e removido quando ele desliga.
-   As cores vêm das variáveis do app: seguem os três temas sozinhas. */
-.destaca-todo {
+/* Loaded together with the plugin and removed when it is disabled.
+   The colors come from the app's variables: they follow all three themes on their own. */
+.highlight-todo {
   font-weight: 600;
   border-radius: 4px;
   padding: 0 3px;
 }
-.destaca-todo-todo     { color: rgb(var(--warn));     background: rgb(var(--warn) / .14); }
-.destaca-todo-fixme    { color: rgb(var(--danger));   background: rgb(var(--danger) / .14); }
-.destaca-todo-pergunta { color: rgb(var(--trabalho)); background: rgb(var(--trabalho) / .14); }
+.highlight-todo-todo     { color: rgb(var(--warn));   background: rgb(var(--warn) / .14); }
+.highlight-todo-fixme    { color: rgb(var(--danger)); background: rgb(var(--danger) / .14); }
+.highlight-todo-question { color: rgb(var(--work));   background: rgb(var(--work) / .14); }

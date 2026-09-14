@@ -1,28 +1,28 @@
-// Plugin de núcleo: Grafo.
+// Core plugin: Graph.
 //
-// Toda nota é um ponto, todo [[link]] é uma linha. Ponto colorido pelo
-// projeto da nota; link para nota que ainda não existe vira ponto fantasma.
-// SVG e uma simulação de forças simples, sem biblioteca — é também o exemplo
-// de painel com DOM puro que a documentação de plugins aponta.
+// Every note is a dot, every [[link]] is a line. Dots are colored by the
+// note's project; a link to a note that doesn't exist yet becomes a ghost dot.
+// SVG and a simple force simulation, no library — it's also the example of a
+// plain-DOM panel that the plugin docs point to.
 
-import type { Bancada, DefinicaoPlugin, Manifesto } from '../types';
+import type { Bancada, PluginDefinition, PluginManifest } from '../types';
 
-export const manifesto: Manifesto = {
-  id: 'grafo',
-  nome: 'Grafo',
-  versao: '1.0.0',
-  descricao: 'Mapa das notas e dos links entre elas, colorido por projeto.',
-  autor: 'Bancada',
+export const manifest: PluginManifest = {
+  id: 'graph',
+  name: 'Graph',
+  version: '1.0.0',
+  description: 'Map of notes and the links between them, colored by project.',
+  author: 'Bancada',
 };
 
 const NS = 'http://www.w3.org/2000/svg';
 
-interface No {
-  id: string; titulo: string; cor: string | null; fantasma: boolean;
-  x: number; y: number; vx: number; vy: number; grau: number;
-  circulo?: SVGCircleElement; rotulo?: SVGTextElement;
+interface GraphNode {
+  id: string; title: string; color: string | null; ghost: boolean;
+  x: number; y: number; vx: number; vy: number; degree: number;
+  circle?: SVGCircleElement; label?: SVGTextElement;
 }
-interface Aresta { a: No; b: No; linha?: SVGLineElement }
+interface Edge { a: GraphNode; b: GraphNode; line?: SVGLineElement }
 
 function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
   const e = document.createElementNS(NS, tag);
@@ -30,236 +30,237 @@ function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, 
   return e;
 }
 
-function monta(host: HTMLElement, b: Bancada): () => void {
+function mount(host: HTMLElement, b: Bancada): () => void {
   host.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;cursor:grab';
   const svg = el('svg', { width: '100%', height: '100%' });
-  const camada = el('g');
-  const linhas = el('g');
-  const pontos = el('g');
-  camada.append(linhas, pontos);
-  svg.appendChild(camada);
+  const layer = el('g');
+  const lines = el('g');
+  const dots = el('g');
+  layer.append(lines, dots);
+  svg.appendChild(layer);
   host.appendChild(svg);
 
   const info = document.createElement('div');
   info.style.cssText = 'position:absolute;left:16px;bottom:12px;font:11px "JetBrains Mono Variable",monospace;color:rgb(var(--fg-subtle));pointer-events:none';
   host.appendChild(info);
 
-  let parado = false;
-  let quadro = 0;
-  /** A pessoa já mexeu na vista: a simulação para de reenquadrar por cima dela. */
-  let mexeu = false;
+  let stopped = false;
+  let frame = 0;
+  /** The person has already moved the view: the simulation stops reframing on top of them. */
+  let userMoved = false;
   let zoom = 1;
-  let desloc = { x: 0, y: 0 };
-  const aplicaVista = () => camada.setAttribute('transform', `translate(${desloc.x} ${desloc.y}) scale(${zoom})`);
+  let offset = { x: 0, y: 0 };
+  const applyView = () => layer.setAttribute('transform', `translate(${offset.x} ${offset.y}) scale(${zoom})`);
 
-  const nos = new Map<string, No>();
-  const arestas: Aresta[] = [];
+  const nodes = new Map<string, GraphNode>();
+  const edges: Edge[] = [];
 
-  function vizinhos(n: No): Set<No> {
-    const s = new Set<No>([n]);
-    for (const a of arestas) { if (a.a === n) s.add(a.b); if (a.b === n) s.add(a.a); }
+  function neighbors(n: GraphNode): Set<GraphNode> {
+    const s = new Set<GraphNode>([n]);
+    for (const a of edges) { if (a.a === n) s.add(a.b); if (a.b === n) s.add(a.a); }
     return s;
   }
 
-  function realca(n: No | null): void {
-    const viz = n ? vizinhos(n) : null;
-    for (const x of nos.values()) {
-      const perto = !viz || viz.has(x);
-      x.circulo!.style.opacity = perto ? '1' : '0.15';
-      if (x.rotulo) x.rotulo.style.opacity = perto ? '1' : '0.1';
-      if (x.rotulo) x.rotulo.style.display = n ? (perto ? '' : 'none') : x.rotulo.dataset.sempre === '1' ? '' : 'none';
+  function highlight(n: GraphNode | null): void {
+    const near = n ? neighbors(n) : null;
+    for (const x of nodes.values()) {
+      const isNear = !near || near.has(x);
+      x.circle!.style.opacity = isNear ? '1' : '0.15';
+      if (x.label) x.label.style.opacity = isNear ? '1' : '0.1';
+      if (x.label) x.label.style.display = n ? (isNear ? '' : 'none') : x.label.dataset.always === '1' ? '' : 'none';
     }
-    for (const a of arestas) {
-      const liga = !n || a.a === n || a.b === n;
-      a.linha!.style.opacity = liga ? (n ? '0.9' : '0.35') : '0.05';
-      a.linha!.style.stroke = liga && n ? 'rgb(var(--accent-ink))' : 'rgb(var(--rule-strong))';
+    for (const a of edges) {
+      const connected = !n || a.a === n || a.b === n;
+      a.line!.style.opacity = connected ? (n ? '0.9' : '0.35') : '0.05';
+      a.line!.style.stroke = connected && n ? 'rgb(var(--accent-ink))' : 'rgb(var(--rule-strong))';
     }
   }
 
-  async function carrega(): Promise<void> {
-    const notas = b.notas.lista();
-    const ligacoes = await b.notas.ligacoes();
-    if (parado) return;
-    const cores = new Map(b.projetos.lista().map((p) => [p.id, p.cor]));
-    const aberta = b.notas.aberta();
+  async function load(): Promise<void> {
+    const notes = b.notes.list();
+    const links = await b.notes.links();
+    if (stopped) return;
+    const colors = new Map(b.projects.list().map((p) => [p.id, p.color]));
+    const active = b.notes.active();
 
-    notas.forEach((n, i) => {
-      const ang = (i / Math.max(1, notas.length)) * Math.PI * 2;
-      nos.set(n.path, {
-        id: n.path, titulo: n.titulo, cor: n.projeto ? cores.get(n.projeto) ?? null : null, fantasma: false,
-        x: Math.cos(ang) * 200, y: Math.sin(ang) * 200, vx: 0, vy: 0, grau: 0,
+    notes.forEach((n, i) => {
+      const angle = (i / Math.max(1, notes.length)) * Math.PI * 2;
+      nodes.set(n.path, {
+        id: n.path, title: n.title, color: n.project ? colors.get(n.project) ?? null : null, ghost: false,
+        x: Math.cos(angle) * 200, y: Math.sin(angle) * 200, vx: 0, vy: 0, degree: 0,
       });
     });
-    const vistas = new Set<string>();
-    for (const l of ligacoes) {
-      const de = nos.get(l.de);
-      if (!de) continue;
-      const chave = l.para ?? `?${l.alvo}`;
-      let para = nos.get(chave);
-      if (!para) {
-        para = { id: chave, titulo: l.alvo, cor: null, fantasma: true, x: de.x + 30, y: de.y + 30, vx: 0, vy: 0, grau: 0 };
-        nos.set(chave, para);
+    const seen = new Set<string>();
+    for (const l of links) {
+      const from = nodes.get(l.from);
+      if (!from) continue;
+      const key = l.to ?? `?${l.target}`;
+      let to = nodes.get(key);
+      if (!to) {
+        to = { id: key, title: l.target, color: null, ghost: true, x: from.x + 30, y: from.y + 30, vx: 0, vy: 0, degree: 0 };
+        nodes.set(key, to);
       }
-      if (para === de) continue;
-      const par = [de.id, para.id].sort().join('|');
-      if (vistas.has(par)) continue;
-      vistas.add(par);
-      arestas.push({ a: de, b: para });
-      de.grau++; para.grau++;
+      if (to === from) continue;
+      const pair = [from.id, to.id].sort().join('|');
+      if (seen.has(pair)) continue;
+      seen.add(pair);
+      edges.push({ a: from, b: to });
+      from.degree++; to.degree++;
     }
 
-    for (const a of arestas) {
-      a.linha = el('line', { 'stroke-width': 1 });
-      a.linha.style.stroke = 'rgb(var(--rule-strong))';
-      a.linha.style.opacity = '0.35';
-      linhas.appendChild(a.linha);
+    for (const a of edges) {
+      a.line = el('line', { 'stroke-width': 1 });
+      a.line.style.stroke = 'rgb(var(--rule-strong))';
+      a.line.style.opacity = '0.35';
+      lines.appendChild(a.line);
     }
-    const poucos = nos.size <= 60;
-    for (const n of nos.values()) {
-      const r = n.fantasma ? 3.5 : 4 + Math.min(8, Math.sqrt(n.grau) * 2);
-      n.circulo = el('circle', { r });
-      n.circulo.style.fill = n.fantasma ? 'transparent' : n.cor ? `rgb(var(--${n.cor}))` : 'rgb(var(--fg-muted))';
-      n.circulo.style.stroke = n.fantasma ? 'rgb(var(--fg-subtle))' : n.id === aberta ? 'rgb(var(--fg))' : 'transparent';
-      n.circulo.style.strokeWidth = n.id === aberta ? '2' : '1';
-      if (n.fantasma) n.circulo.style.strokeDasharray = '2 2';
-      n.circulo.style.cursor = 'pointer';
-      n.circulo.addEventListener('mouseenter', () => realca(n));
-      n.circulo.addEventListener('mouseleave', () => realca(null));
-      n.circulo.addEventListener('click', (e) => {
+    const few = nodes.size <= 60;
+    for (const n of nodes.values()) {
+      const r = n.ghost ? 3.5 : 4 + Math.min(8, Math.sqrt(n.degree) * 2);
+      n.circle = el('circle', { r });
+      n.circle.style.fill = n.ghost ? 'transparent' : n.color ? `rgb(var(--${n.color}))` : 'rgb(var(--fg-muted))';
+      n.circle.style.stroke = n.ghost ? 'rgb(var(--fg-subtle))' : n.id === active ? 'rgb(var(--fg))' : 'transparent';
+      n.circle.style.strokeWidth = n.id === active ? '2' : '1';
+      if (n.ghost) n.circle.style.strokeDasharray = '2 2';
+      n.circle.style.cursor = 'pointer';
+      n.circle.addEventListener('mouseenter', () => highlight(n));
+      n.circle.addEventListener('mouseleave', () => highlight(null));
+      n.circle.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (!n.fantasma) b.notas.abre(n.id);
-        else b.ui.toast(`"${n.titulo}" ainda não existe — clique no link dentro de uma nota para criar.`, 'aviso');
+        if (!n.ghost) b.notes.open(n.id);
+        else b.ui.notice(`"${n.title}" doesn't exist yet — click the link inside a note to create it.`, 'warning');
       });
-      pontos.appendChild(n.circulo);
+      dots.appendChild(n.circle);
 
-      n.rotulo = el('text', { 'text-anchor': 'middle', 'font-size': 11 });
-      n.rotulo.textContent = n.titulo;
-      n.rotulo.style.fill = n.fantasma ? 'rgb(var(--fg-subtle))' : 'rgb(var(--fg-muted))';
-      n.rotulo.style.fontFamily = '"Instrument Sans Variable", system-ui, sans-serif';
-      n.rotulo.style.pointerEvents = 'none';
-      n.rotulo.dataset.sempre = poucos || n.grau >= 3 ? '1' : '0';
-      n.rotulo.style.display = n.rotulo.dataset.sempre === '1' ? '' : 'none';
-      pontos.appendChild(n.rotulo);
+      n.label = el('text', { 'text-anchor': 'middle', 'font-size': 11 });
+      n.label.textContent = n.title;
+      n.label.style.fill = n.ghost ? 'rgb(var(--fg-subtle))' : 'rgb(var(--fg-muted))';
+      n.label.style.fontFamily = '"Instrument Sans Variable", system-ui, sans-serif';
+      n.label.style.pointerEvents = 'none';
+      n.label.dataset.always = few || n.degree >= 3 ? '1' : '0';
+      n.label.style.display = n.label.dataset.always === '1' ? '' : 'none';
+      dots.appendChild(n.label);
     }
 
-    const semLink = [...nos.values()].filter((n) => !n.fantasma && n.grau === 0).length;
-    info.textContent = `${notas.length} notas · ${arestas.length} links${semLink ? ` · ${semLink} soltas` : ''} · roda o mouse para zoom, arraste para mover`;
+    const orphans = [...nodes.values()].filter((n) => !n.ghost && n.degree === 0).length;
+    info.textContent = `${notes.length} notes · ${edges.length} links${orphans ? ` · ${orphans} orphans` : ''} · scroll to zoom, drag to pan`;
 
     const { width, height } = host.getBoundingClientRect();
-    desloc = { x: width / 2, y: height / 2 };
-    aplicaVista();
-    simula();
+    offset = { x: width / 2, y: height / 2 };
+    applyView();
+    simulate();
   }
 
   /**
-   * Enquadra o grafo inteiro na tela, com folga. Sem isto o desenho nasce
-   * deslocado e o que fica na borda (quase sempre os nós soltos) sai cortado.
+   * Fits the whole graph on screen, with some margin. Without this the drawing
+   * starts off-center and whatever sits at the edge (almost always the orphan
+   * nodes) gets cut off.
    */
-  function enquadra(): void {
-    if (!nos.size) return;
+  function fitToView(): void {
+    if (!nodes.size) return;
     let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
-    for (const n of nos.values()) {
+    for (const n of nodes.values()) {
       x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y);
     }
     const { width, height } = host.getBoundingClientRect();
-    const folga = 80;
+    const margin = 80;
     const w = Math.max(1, x1 - x0); const h = Math.max(1, y1 - y0);
-    zoom = Math.min(2, Math.max(0.2, Math.min((width - folga * 2) / w, (height - folga * 2) / h)));
-    desloc = { x: width / 2 - ((x0 + x1) / 2) * zoom, y: height / 2 - ((y0 + y1) / 2) * zoom };
-    aplicaVista();
+    zoom = Math.min(2, Math.max(0.2, Math.min((width - margin * 2) / w, (height - margin * 2) / h)));
+    offset = { x: width / 2 - ((x0 + x1) / 2) * zoom, y: height / 2 - ((y0 + y1) / 2) * zoom };
+    applyView();
   }
 
   /**
-   * Forças: todo par se repele, toda aresta puxa como mola, e uma gravidade
-   * fraca segura tudo no centro. `calor` cai a cada quadro e a simulação para
-   * sozinha — nada de CPU gasta num grafo que já assentou.
+   * Forces: every pair repels, every edge pulls like a spring, and a weak
+   * gravity holds everything to the center. `heat` drops every frame and the
+   * simulation stops on its own — no CPU spent on a graph that has settled.
    */
-  function simula(): void {
-    let calor = 1;
-    let quadros = 0;
-    const lista = [...nos.values()];
-    const passo = () => {
-      if (parado) return;
-      for (let i = 0; i < lista.length; i++) {
-        const p = lista[i];
-        for (let j = i + 1; j < lista.length; j++) {
-          const q = lista[j];
+  function simulate(): void {
+    let heat = 1;
+    let frameCount = 0;
+    const list = [...nodes.values()];
+    const step = () => {
+      if (stopped) return;
+      for (let i = 0; i < list.length; i++) {
+        const p = list[i];
+        for (let j = i + 1; j < list.length; j++) {
+          const q = list[j];
           let dx = p.x - q.x; let dy = p.y - q.y;
           let d2 = dx * dx + dy * dy;
           if (d2 < 0.01) { dx = (i - j) * 0.1; dy = 0.1; d2 = dx * dx + dy * dy; }
-          if (d2 > 250000) continue;   // longe demais para importar
-          const f = (900 / d2) * calor;
+          if (d2 > 250000) continue;   // too far away to matter
+          const f = (900 / d2) * heat;
           p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f;
         }
       }
-      for (const a of arestas) {
+      for (const a of edges) {
         const dx = a.b.x - a.a.x; const dy = a.b.y - a.a.y;
         const d = Math.sqrt(dx * dx + dy * dy) || 1;
-        const f = ((d - 70) / d) * 0.04 * calor;
+        const f = ((d - 70) / d) * 0.04 * heat;
         a.a.vx += dx * f; a.a.vy += dy * f; a.b.vx -= dx * f; a.b.vy -= dy * f;
       }
-      for (const n of lista) {
-        n.vx -= n.x * 0.004 * calor; n.vy -= n.y * 0.004 * calor;
+      for (const n of list) {
+        n.vx -= n.x * 0.004 * heat; n.vy -= n.y * 0.004 * heat;
         n.x += n.vx; n.y += n.vy;
         n.vx *= 0.6; n.vy *= 0.6;
       }
-      for (const a of arestas) {
-        a.linha!.setAttribute('x1', a.a.x.toFixed(1)); a.linha!.setAttribute('y1', a.a.y.toFixed(1));
-        a.linha!.setAttribute('x2', a.b.x.toFixed(1)); a.linha!.setAttribute('y2', a.b.y.toFixed(1));
+      for (const a of edges) {
+        a.line!.setAttribute('x1', a.a.x.toFixed(1)); a.line!.setAttribute('y1', a.a.y.toFixed(1));
+        a.line!.setAttribute('x2', a.b.x.toFixed(1)); a.line!.setAttribute('y2', a.b.y.toFixed(1));
       }
-      for (const n of lista) {
-        n.circulo!.setAttribute('cx', n.x.toFixed(1)); n.circulo!.setAttribute('cy', n.y.toFixed(1));
-        n.rotulo!.setAttribute('x', n.x.toFixed(1)); n.rotulo!.setAttribute('y', (n.y - 12).toFixed(1));
+      for (const n of list) {
+        n.circle!.setAttribute('cx', n.x.toFixed(1)); n.circle!.setAttribute('cy', n.y.toFixed(1));
+        n.label!.setAttribute('x', n.x.toFixed(1)); n.label!.setAttribute('y', (n.y - 12).toFixed(1));
       }
-      calor *= 0.985;
-      quadros++;
-      // enquadra cedo (o desenho já tem forma) e de novo quando assenta
-      if (!mexeu && (quadros === 45 || calor <= 0.01)) enquadra();
-      if (calor > 0.01) quadro = requestAnimationFrame(passo);
+      heat *= 0.985;
+      frameCount++;
+      // fit early (the drawing already has a shape) and again once it settles
+      if (!userMoved && (frameCount === 45 || heat <= 0.01)) fitToView();
+      if (heat > 0.01) frame = requestAnimationFrame(step);
     };
-    quadro = requestAnimationFrame(passo);
+    frame = requestAnimationFrame(step);
   }
 
-  // ── zoom e arrasto ──
-  const roda = (e: WheelEvent) => {
+  // ── zoom and drag ──
+  const onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    mexeu = true;
+    userMoved = true;
     const r = host.getBoundingClientRect();
     const mx = e.clientX - r.left; const my = e.clientY - r.top;
-    const novo = Math.min(4, Math.max(0.2, zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-    desloc = { x: mx - ((mx - desloc.x) * novo) / zoom, y: my - ((my - desloc.y) * novo) / zoom };
-    zoom = novo;
-    aplicaVista();
+    const next = Math.min(4, Math.max(0.2, zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+    offset = { x: mx - ((mx - offset.x) * next) / zoom, y: my - ((my - offset.y) * next) / zoom };
+    zoom = next;
+    applyView();
   };
-  let arrasto: { x: number; y: number; dx: number; dy: number } | null = null;
-  const desce = (e: MouseEvent) => { mexeu = true; arrasto = { x: e.clientX, y: e.clientY, dx: desloc.x, dy: desloc.y }; host.style.cursor = 'grabbing'; };
-  const move = (e: MouseEvent) => {
-    if (!arrasto) return;
-    desloc = { x: arrasto.dx + e.clientX - arrasto.x, y: arrasto.dy + e.clientY - arrasto.y };
-    aplicaVista();
+  let drag: { x: number; y: number; dx: number; dy: number } | null = null;
+  const onDown = (e: MouseEvent) => { userMoved = true; drag = { x: e.clientX, y: e.clientY, dx: offset.x, dy: offset.y }; host.style.cursor = 'grabbing'; };
+  const onMove = (e: MouseEvent) => {
+    if (!drag) return;
+    offset = { x: drag.dx + e.clientX - drag.x, y: drag.dy + e.clientY - drag.y };
+    applyView();
   };
-  const sobe = () => { arrasto = null; host.style.cursor = 'grab'; };
-  host.addEventListener('wheel', roda, { passive: false });
-  host.addEventListener('mousedown', desce);
-  window.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', sobe);
+  const onUp = () => { drag = null; host.style.cursor = 'grab'; };
+  host.addEventListener('wheel', onWheel, { passive: false });
+  host.addEventListener('mousedown', onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
 
-  void carrega();
+  void load();
 
   return () => {
-    parado = true;
-    cancelAnimationFrame(quadro);
-    host.removeEventListener('wheel', roda);
-    host.removeEventListener('mousedown', desce);
-    window.removeEventListener('mousemove', move);
-    window.removeEventListener('mouseup', sobe);
+    stopped = true;
+    cancelAnimationFrame(frame);
+    host.removeEventListener('wheel', onWheel);
+    host.removeEventListener('mousedown', onDown);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
     host.replaceChildren();
   };
 }
 
-export const definicao: DefinicaoPlugin = {
-  aoLigar(b: Bancada) {
-    b.ui.adicionaPainel({ id: 'grafo', titulo: 'Grafo', monta: (host) => monta(host, b) });
-    b.comandos.adiciona({ id: 'abrir', nome: 'Abrir o grafo de notas', executa: () => b.ui.abrePainel('grafo') });
+export const definition: PluginDefinition = {
+  onload(b: Bancada) {
+    b.ui.addPanel({ id: 'graph', title: 'Graph', mount: (host) => mount(host, b) });
+    b.commands.add({ id: 'open', name: 'Open the note graph', run: () => b.ui.openPanel('graph') });
   },
 };

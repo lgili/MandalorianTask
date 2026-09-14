@@ -1,10 +1,10 @@
-// Plugins que vêm com o app. Ligados por padrão; cada um pode ser desligado
-// em Ajustes > Plugins, como os "core plugins" do Obsidian.
-import type { DefinicaoPlugin, Manifesto } from '../types';
-import * as notaDoDia from './dailyNote';
-import * as tarefasDaNota from './noteTasks';
-import * as grafo from './graph';
+// Plugins that ship with the app. Enabled by default; each one can be disabled
+// in Settings > Plugins, like Obsidian's "core plugins".
+import type { PluginDefinition, PluginManifest } from '../types';
+import * as dailyNote from './dailyNote';
+import * as noteTasks from './noteTasks';
+import * as graph from './graph';
 
-export const NUCLEO: Array<{ manifesto: Manifesto; definicao: DefinicaoPlugin }> = [
-  notaDoDia, tarefasDaNota, grafo,
+export const CORE_PLUGINS: Array<{ manifest: PluginManifest; definition: PluginDefinition }> = [
+  dailyNote, noteTasks, graph,
 ];

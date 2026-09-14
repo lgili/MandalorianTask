@@ -1,121 +1,121 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { Trash2, ArrowRight } from 'lucide-vue-next';
-import CapturaLinha from '../components/CaptureLine.vue';
-import ChipProjeto from '../components/ProjectChip.vue';
+import CaptureLine from '../components/CaptureLine.vue';
+import ProjectChip from '../components/ProjectChip.vue';
 import type { TaskCard } from '../lib/types';
 import * as api from '../lib/db';
-import { abreDetalhe, backlog, carregaQuadro, tarefas } from '../lib/store';
+import { openTaskDetail, backlog, loadBoard, tasks } from '../lib/store';
 import { toast } from '../lib/toast';
-import { dayKey, rotuloDia } from '../lib/time';
+import { dayKey, fmtDay } from '../lib/time';
 
-const captura = ref<InstanceType<typeof CapturaLinha> | null>(null);
-/** Ids mandados para a fila nesta sessão de tela: continuam visíveis, carimbados. */
-const enfileirados = ref<Set<number>>(new Set());
+const captureLine = ref<InstanceType<typeof CaptureLine> | null>(null);
+/** Ids sent to the queue during this visit to the screen: they stay visible, stamped. */
+const queuedIds = ref<Set<number>>(new Set());
 
 /**
- * Agrupa por CONTEXTO DE CAPTURA, não por hora.
- * Tudo que nasceu durante a mesma tarefa em curso vira um bloco — na prática,
- * "as 7 coisas que saíram da reunião de revisão". Ninguém digitou isso.
+ * Groups by CAPTURE CONTEXT, not by time.
+ * Everything born during the same in-progress task becomes one block — in practice,
+ * "the 7 things that came out of the review meeting". Nobody typed that.
  */
-interface Grupo { chave: string; rotulo: string; contexto: string | null; itens: TaskCard[] }
+interface CaptureGroup { key: string; label: string; context: string | null; items: TaskCard[] }
 
-const grupos = computed<Grupo[]>(() => {
-  const out = new Map<string, Grupo>();
+const groups = computed<CaptureGroup[]>(() => {
+  const out = new Map<string, CaptureGroup>();
   for (const t of backlog.value) {
-    // A fronteira do dia é LOCAL: comparar a fatia UTC do ISO erra à noite.
+    // The day boundary is LOCAL: comparing the UTC slice of the ISO string gets it wrong at night.
     const d = dayKey(new Date(t.created_at));
-    const chave = `${t.origem_id ?? 'solo'}|${d}`;
-    if (!out.has(chave)) {
-      out.set(chave, {
-        chave,
-        rotulo: d === dayKey() ? 'Hoje' : rotuloDia(d),
-        contexto: t.origem_title,
-        itens: [],
+    const key = `${t.origin_id ?? 'solo'}|${d}`;
+    if (!out.has(key)) {
+      out.set(key, {
+        key,
+        label: d === dayKey() ? 'Today' : fmtDay(d),
+        context: t.origin_title,
+        items: [],
       });
     }
-    out.get(chave)!.itens.push(t);
+    out.get(key)!.items.push(t);
   }
   return [...out.values()];
 });
 
-async function paraFila(t: TaskCard): Promise<void> {
+async function sendToQueue(t: TaskCard): Promise<void> {
   try {
-    await api.moveTask(t.id, 'fila');
-    enfileirados.value.add(t.id);
-    await carregaQuadro();
-  } catch (e) { toast.erro(api.dbErro(e)); }
+    await api.moveTask(t.id, 'queued');
+    queuedIds.value.add(t.id);
+    await loadBoard();
+  } catch (e) { toast.error(api.dbError(e)); }
 }
 
-async function apaga(t: TaskCard): Promise<void> {
+async function remove(t: TaskCard): Promise<void> {
   try {
     await api.deleteTask(t.id);
-    await carregaQuadro();
-  } catch (e) { toast.erro(api.dbErro(e)); }
+    await loadBoard();
+  } catch (e) { toast.error(api.dbError(e)); }
 }
 
-const capturadasHoje = computed(() => tarefas.value
+const capturedToday = computed(() => tasks.value
   .filter((t) => dayKey(new Date(t.created_at)) === dayKey()).length);
 
-const prazoCurto = (iso: string): string =>
-  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+const shortDue = (iso: string): string =>
+  new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
 
-onMounted(() => captura.value?.foca());
+onMounted(() => captureLine.value?.focus());
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <!-- ── campo de captura: fixo no topo, a lista cresce PARA BAIXO ──
-         Campo embaixo estilo chat obrigaria a lista a rolar a cada item, e
-         rolar durante reunião mata a captura. -->
+    <!-- ── capture field: pinned to the top, the list grows DOWNWARD ──
+         A chat-style field at the bottom would make the list scroll on every item,
+         and scrolling during a meeting kills capture. -->
     <div class="flex-none border-b border-rule bg-surface px-6 pb-2.5 pt-3">
       <div class="mx-auto max-w-[880px]">
-        <CapturaLinha ref="captura" autofoco />
+        <CaptureLine ref="captureLine" autofocus />
       </div>
     </div>
 
-    <!-- ── lista ── -->
+    <!-- ── list ── -->
     <div class="min-h-0 flex-1 overflow-y-auto px-6 pb-8 pt-4">
       <div class="mx-auto max-w-[880px]">
-      <p v-if="!grupos.length" class="mt-16 text-center text-[14px] text-fg-subtle">
-        Nada capturado.<br>
-        <span class="text-[12px]">Digite acima e aperte enter — durante a reunião, sem tirar o olho dela.</span>
+      <p v-if="!groups.length" class="mt-16 text-center text-[14px] text-fg-subtle">
+        Nothing captured.<br>
+        <span class="text-[12px]">Type above and press enter — during the meeting, without looking away.</span>
       </p>
 
-      <div v-for="g in grupos" :key="g.chave" class="mb-5">
+      <div v-for="g in groups" :key="g.key" class="mb-5">
         <div class="mb-1.5 flex items-baseline gap-2 border-b border-rule pb-1">
-          <span class="rot">{{ g.rotulo }}</span>
-          <span v-if="g.contexto" class="flex items-center gap-1.5 text-[11px] text-fg-subtle">
-            <span class="text-fg-subtle/50">·</span> durante
-            <span class="chip bg-reuniao/15 text-reuniao">{{ g.contexto }}</span>
+          <span class="label">{{ g.label }}</span>
+          <span v-if="g.context" class="flex items-center gap-1.5 text-[11px] text-fg-subtle">
+            <span class="text-fg-subtle/50">·</span> during
+            <span class="chip bg-meeting/15 text-meeting">{{ g.context }}</span>
           </span>
-          <span class="med ml-auto text-[11px] text-fg-subtle">{{ g.itens.length }}</span>
+          <span class="mono ml-auto text-[11px] text-fg-subtle">{{ g.items.length }}</span>
         </div>
 
-        <div v-for="t in g.itens" :key="t.id"
+        <div v-for="t in g.items" :key="t.id"
           class="group grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-2.5 py-2
                  transition-colors hover:bg-surface"
-          :class="enfileirados.has(t.id) && 'opacity-55'">
+          :class="queuedIds.has(t.id) && 'opacity-55'">
           <div class="flex min-w-0 items-baseline gap-2">
             <button class="truncate text-left text-[14px] leading-snug hover:text-accent-ink"
-              @click="abreDetalhe(t.id)">{{ t.title }}</button>
-            <span v-if="enfileirados.has(t.id)" class="med flex-none text-[11px] text-ok">→ fila</span>
+              @click="openTaskDetail(t.id)">{{ t.title }}</button>
+            <span v-if="queuedIds.has(t.id)" class="mono flex-none text-[11px] text-ok">→ queue</span>
           </div>
 
           <div class="flex flex-none items-center gap-2.5">
-            <ChipProjeto v-if="t.project_id" :codigo="t.project_code" :nome="t.project_name"
-              :cor="t.project_color" />
-            <span v-if="t.kind === 'reuniao'" class="chip bg-reuniao/15 text-reuniao">reunião</span>
-            <span v-if="t.due_at" class="med text-[11px] text-warn">{{ prazoCurto(t.due_at) }}</span>
+            <ProjectChip v-if="t.project_id" :code="t.project_code" :name="t.project_name"
+              :color="t.project_color" />
+            <span v-if="t.kind === 'meeting'" class="chip bg-meeting/15 text-meeting">meeting</span>
+            <span v-if="t.due_at" class="mono text-[11px] text-warn">{{ shortDue(t.due_at) }}</span>
 
             <div class="flex items-center gap-0.5 opacity-0 transition-opacity
                         group-hover:opacity-100 group-focus-within:opacity-100">
               <button class="rounded-[3px] p-1 text-fg-subtle hover:bg-surface-3 hover:text-fg"
-                title="Mandar pra fila" @click="paraFila(t)">
+                title="Send to queue" @click="sendToQueue(t)">
                 <ArrowRight class="h-3.5 w-3.5" />
               </button>
               <button class="rounded-[3px] p-1 text-fg-subtle hover:bg-surface-3 hover:text-danger"
-                title="Apagar" @click="apaga(t)">
+                title="Delete" @click="remove(t)">
                 <Trash2 class="h-3.5 w-3.5" />
               </button>
             </div>
@@ -127,9 +127,9 @@ onMounted(() => captura.value?.foca());
 
     <div class="flex flex-none items-center gap-3 border-t border-rule bg-surface px-6 py-1.5
                 font-mono text-[11px] text-fg-subtle">
-      <span>{{ backlog.length }} na captura</span>
+      <span>{{ backlog.length }} in capture</span>
       <span>·</span>
-      <span>{{ capturadasHoje }} capturadas hoje</span>
+      <span>{{ capturedToday }} captured today</span>
     </div>
   </div>
 </template>

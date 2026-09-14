@@ -1,26 +1,26 @@
-// Toda aritmética de tempo do app mora aqui, e só aqui.
+// All of the app's time arithmetic lives here, and only here.
 //
-// Regras:
-//  - Persistimos SEMPRE UTC ISO-8601 ("2026-09-08T12:00:00.000Z").
-//  - A fronteira do dia é LOCAL. O app roda na máquina do usuário, então o
-//    fuso do sistema é a resposta certa — inclusive no horário de verão, que
-//    o Date nativo já resolve.
-//  - Granularidade é 15 min. Arredondar é decisão de produto, não detalhe.
+// Rules:
+//  - We ALWAYS persist UTC ISO-8601 ("2026-09-08T12:00:00.000Z").
+//  - The day boundary is LOCAL. The app runs on the user's machine, so the
+//    system time zone is the right answer — including during daylight saving time, which
+//    the native Date already handles.
+//  - Granularity is 15 min. Rounding is a product decision, not a detail.
 
-export const GRAO_MIN = 15;
-/** Janela desenhada na timeline (hora local). */
-export const DIA_INICIO_H = 7;
-export const DIA_FIM_H = 20;
+export const GRAIN_MIN = 15;
+/** Window drawn on the timeline (local hour). */
+export const DAY_START_H = 7;
+export const DAY_END_H = 20;
 
-export type DayKey = string; // 'YYYY-MM-DD' no fuso local
+export type DayKey = string; // 'YYYY-MM-DD' in the local time zone
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 
-export function tzAtual(): string {
+export function currentTz(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
-/** Data local -> 'YYYY-MM-DD'. Nunca use toISOString aqui: ele converte pra UTC. */
+/** Local date -> 'YYYY-MM-DD'. Never use toISOString here: it converts to UTC. */
 export function dayKey(d: Date = new Date()): DayKey {
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 }
@@ -37,9 +37,9 @@ export function addDays(key: DayKey, n: number): DayKey {
 }
 
 /**
- * Intervalo UTC que corresponde ao dia local. Meia-noite local -> meia-noite local
- * do dia seguinte. Em dia de mudança de horário de verão isso dá 23h ou 25h, que
- * é exatamente o correto.
+ * UTC range matching the local day. Local midnight -> local midnight
+ * of the next day. On a daylight saving changeover day that gives 23h or 25h, which
+ * is exactly right.
  */
 export function dayRangeUtc(key: DayKey): { from: string; to: string } {
   const start = parseDayKey(key);
@@ -48,126 +48,126 @@ export function dayRangeUtc(key: DayKey): { from: string; to: string } {
   return { from: start.toISOString(), to: end.toISOString() };
 }
 
-/** Minutos desde a meia-noite LOCAL do dia do próprio instante. */
-export function minutosDoDia(utcIso: string): number {
+/** Minutes since LOCAL midnight of the instant's own day. */
+export function minutesOfDay(utcIso: string): number {
   const d = new Date(utcIso);
   return d.getHours() * 60 + d.getMinutes();
 }
 
-/** 'HH:MM' local. */
+/** Local 'HH:MM'. */
 export function hhmm(utcIso: string): string {
   const d = new Date(utcIso);
   return `${p2(d.getHours())}:${p2(d.getMinutes())}`;
 }
 
-/** Dia local + minutos desde a meia-noite -> UTC ISO. */
-export function utcDe(key: DayKey, minutos: number): string {
+/** Local day + minutes since midnight -> UTC ISO. */
+export function toUtc(key: DayKey, minutes: number): string {
   const d = parseDayKey(key);
-  d.setMinutes(d.getMinutes() + minutos);
+  d.setMinutes(d.getMinutes() + minutes);
   return d.toISOString();
 }
 
-export function duracaoMin(aIso: string, bIso: string): number {
+export function durationMin(aIso: string, bIso: string): number {
   return Math.round((new Date(bIso).getTime() - new Date(aIso).getTime()) / 60000);
 }
 
-/** Arredonda minutos para o grão. Meio caminho sobe. */
-export function arredonda(minutos: number, grao = GRAO_MIN): number {
-  return Math.round(minutos / grao) * grao;
+/** Rounds minutes to the grain. Halfway rounds up. */
+export function roundToGrain(minutes: number, grain = GRAIN_MIN): number {
+  return Math.round(minutes / grain) * grain;
 }
 
-/** '6h15' — para totais. Sempre com hora, mesmo abaixo de 1h ('0h45'). */
-export function fmtHM(minutos: number): string {
-  const neg = minutos < 0;
-  const m = Math.abs(Math.round(minutos));
+/** '6h15' — for totals. Always with the hour, even below 1h ('0h45'). */
+export function fmtHM(minutes: number): string {
+  const neg = minutes < 0;
+  const m = Math.abs(Math.round(minutes));
   return `${neg ? '-' : ''}${Math.floor(m / 60)}h${p2(m % 60)}`;
 }
 
-/** '45 min' abaixo de uma hora, '1h30' acima — para a duração de um bloco. */
-export function fmtDur(minutos: number): string {
-  const m = Math.round(minutos);
+/** '45 min' below one hour, '1h30' above — for the duration of a block. */
+export function fmtDur(minutes: number): string {
+  const m = Math.round(minutes);
   return m < 60 ? `${m} min` : fmtHM(m);
 }
 
-/** Sobreposição real de dois intervalos. Encostar não é sobrepor. */
-export function sobrepoe(
+/** Real overlap of two intervals. Touching is not overlapping. */
+export function overlaps(
   a: { started_at: string; ended_at: string },
   b: { started_at: string; ended_at: string },
 ): boolean {
   return a.started_at < b.ended_at && b.started_at < a.ended_at;
 }
 
-/** Minutos em comum entre dois intervalos (0 se não se tocam). */
-export function minutosSobrepostos(
+/** Minutes in common between two intervals (0 if they don't touch). */
+export function overlapMinutes(
   a: { started_at: string; ended_at: string },
   b: { started_at: string; ended_at: string },
 ): number {
-  const ini = a.started_at > b.started_at ? a.started_at : b.started_at;
-  const fim = a.ended_at < b.ended_at ? a.ended_at : b.ended_at;
-  const d = duracaoMin(ini, fim);
+  const start = a.started_at > b.started_at ? a.started_at : b.started_at;
+  const end = a.ended_at < b.ended_at ? a.ended_at : b.ended_at;
+  const d = durationMin(start, end);
   return d > 0 ? d : 0;
 }
 
 /**
- * Lacunas entre blocos consecutivos, em minutos-do-dia local.
- * Só entre o primeiro e o último bloco: antes de começar e depois de terminar
- * não é lacuna, é o dia não ter começado ainda.
+ * Gaps between consecutive blocks, in local minutes-of-day.
+ * Only between the first and the last block: before starting and after finishing
+ * is not a gap, it is the day not having started yet.
  */
-export function lacunas(
-  blocos: Array<{ started_at: string; ended_at: string }>,
-  minimoMin = GRAO_MIN,
-): Array<{ de: number; ate: number }> {
-  const ord = [...blocos].sort((x, y) => x.started_at.localeCompare(y.started_at));
-  const out: Array<{ de: number; ate: number }> = [];
-  for (let i = 0; i < ord.length - 1; i++) {
-    const fim = minutosDoDia(ord[i].ended_at);
-    const ini = minutosDoDia(ord[i + 1].started_at);
-    if (ini - fim >= minimoMin) out.push({ de: fim, ate: ini });
+export function findGaps(
+  blocks: Array<{ started_at: string; ended_at: string }>,
+  minGapMin = GRAIN_MIN,
+): Array<{ from: number; to: number }> {
+  const sorted = [...blocks].sort((x, y) => x.started_at.localeCompare(y.started_at));
+  const out: Array<{ from: number; to: number }> = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const end = minutesOfDay(sorted[i].ended_at);
+    const start = minutesOfDay(sorted[i + 1].started_at);
+    if (start - end >= minGapMin) out.push({ from: end, to: start });
   }
   return out;
 }
 
-const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** 'ter, 08 set' */
-export function rotuloDia(key: DayKey): string {
+/** 'Tue, 08 Sep' */
+export function fmtDay(key: DayKey): string {
   const d = parseDayKey(key);
-  return `${DIAS[d.getDay()]}, ${p2(d.getDate())} ${MESES[d.getMonth()]}`;
+  return `${DAYS[d.getDay()]}, ${p2(d.getDate())} ${MONTHS[d.getMonth()]}`;
 }
 
-/** Segunda-feira da semana daquele dia. */
-export function inicioSemana(key: DayKey): DayKey {
+/** Monday of that day's week. */
+export function startOfWeek(key: DayKey): DayKey {
   const d = parseDayKey(key);
-  const dow = (d.getDay() + 6) % 7; // 0 = segunda
+  const dow = (d.getDay() + 6) % 7; // 0 = Monday
   d.setDate(d.getDate() - dow);
   return dayKey(d);
 }
 
-export function agoraIso(): string {
+export function nowIso(): string {
   return new Date().toISOString();
 }
 
-const DIAS_LONGO = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
-const MESES_LONGO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto',
-  'setembro', 'outubro', 'novembro', 'dezembro'];
+const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December'];
 
-/** 'quinta-feira, 10 de setembro' */
-export function rotuloDiaLongo(d: Date = new Date()): string {
-  return `${DIAS_LONGO[d.getDay()]}, ${d.getDate()} de ${MESES_LONGO[d.getMonth()]}`;
+/** 'Thursday, 10 September' */
+export function fmtDayLong(d: Date = new Date()): string {
+  return `${DAYS_LONG[d.getDay()]}, ${d.getDate()} ${MONTHS_LONG[d.getMonth()]}`;
 }
 
-/** Dias inteiros entre dois instantes (positivo = b depois de a). */
-export function diasEntre(aIso: string, b: Date = new Date()): number {
+/** Whole days between two instants (positive = b after a). */
+export function daysBetween(aIso: string, b: Date = new Date()): number {
   return Math.floor((b.getTime() - new Date(aIso).getTime()) / 86400000);
 }
 
-/** '2h atrás', 'ontem', '6d atrás' */
-export function relativo(iso: string, agora: Date = new Date()): string {
-  const min = Math.round((agora.getTime() - new Date(iso).getTime()) / 60000);
-  if (min < 60) return `${Math.max(1, min)} min atrás`;
+/** '2h ago', 'yesterday', '6d ago' */
+export function fmtRelative(iso: string, now: Date = new Date()): string {
+  const min = Math.round((now.getTime() - new Date(iso).getTime()) / 60000);
+  if (min < 60) return `${Math.max(1, min)} min ago`;
   const h = Math.round(min / 60);
-  if (h < 24) return `${h}h atrás`;
+  if (h < 24) return `${h}h ago`;
   const d = Math.round(h / 24);
-  return d === 1 ? 'ontem' : `${d}d atrás`;
+  return d === 1 ? 'yesterday' : `${d}d ago`;
 }

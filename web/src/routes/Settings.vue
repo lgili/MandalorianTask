@@ -1,123 +1,123 @@
 <script setup lang="ts">
-// Ajustes voltou a ser ajustes. O CRUD de projeto morava aqui, abaixo do
-// seletor de tema — para criar um projeto era preciso sair do que se estava
-// fazendo, navegar até a última tela e perder o texto digitado. Agora ele
-// vive em /projetos, que é onde a mão já está.
+// Settings is back to being settings. Project CRUD used to live here, below the
+// theme picker — creating a project meant leaving what you were doing,
+// navigating to the last screen and losing what you had typed. Now it
+// lives in /projects, which is where your hand already is.
 import { useRouter } from 'vue-router';
 import { ref } from 'vue';
 import { ArrowRight, FolderOpen, RefreshCw } from 'lucide-vue-next';
-import { projetos } from '../lib/store';
-import { escolheVault, notas, sincroniza, sincronizando, vaultAberto } from '../lib/notes';
+import { projects } from '../lib/store';
+import { pickVault, notes, syncVault, syncing, vaultPath } from '../lib/notes';
 import { toast } from '../lib/toast';
-import AjustesPlugins from '../components/PluginSettings.vue';
-import { GRAO_MIN, tzAtual } from '../lib/time';
-import { TEMAS, aplicaTema, temaAtual } from '../lib/theme';
+import PluginSettings from '../components/PluginSettings.vue';
+import { GRAIN_MIN, currentTz } from '../lib/time';
+import { THEMES, applyTheme, currentTheme } from '../lib/theme';
 
 const router = useRouter();
-const tema = ref(temaAtual());
-function escolheTema(t: typeof tema.value): void { tema.value = t; aplicaTema(t); }
+const theme = ref(currentTheme());
+function pickTheme(t: typeof theme.value): void { theme.value = t; applyTheme(t); }
 
-async function trocaVault(): Promise<void> {
-  if (await escolheVault()) toast.ok(`Vault aberto: ${notas.value.length} notas`);
+async function changeVault(): Promise<void> {
+  if (await pickVault()) toast.ok(`Vault opened: ${notes.value.length} notes`);
 }
-async function reindexa(): Promise<void> {
-  const r = await sincroniza();
-  toast.ok(r.lidas || r.removidas ? `${r.lidas} relidas, ${r.removidas} removidas do índice` : 'Índice já estava em dia');
+async function reindex(): Promise<void> {
+  const r = await syncVault();
+  toast.ok(r.reread || r.removed ? `${r.reread} re-read, ${r.removed} removed from the index` : 'Index was already up to date');
 }
 </script>
 
 <template>
   <div class="min-h-0 flex-1 overflow-y-auto">
     <div class="flex max-w-[620px] flex-col gap-4 px-6 pb-10 pt-3">
-      <div class="painel">
-        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Aparência</span></div>
+      <div class="panel">
+        <div class="border-b border-rule px-6 py-2.5"><span class="label">Appearance</span></div>
         <div class="grid grid-cols-3 gap-2 p-3">
-          <button v-for="t in TEMAS" :key="t.id" @click="escolheTema(t.id)"
+          <button v-for="t in THEMES" :key="t.id" @click="pickTheme(t.id)"
             class="rounded-xl border p-3 text-left transition"
-            :class="tema === t.id ? 'border-accent bg-accent/10 shadow-glow' : 'border-rule hover:border-rule-strong'">
-            <div class="text-[14px] font-semibold">{{ t.nome }}</div>
+            :class="theme === t.id ? 'border-accent bg-accent/10 shadow-glow' : 'border-rule hover:border-rule-strong'">
+            <div class="text-[14px] font-semibold">{{ t.name }}</div>
             <div class="text-[11px] text-fg-subtle">{{ t.desc }}</div>
           </button>
         </div>
       </div>
 
-      <button class="painel flex items-center gap-3 px-6 py-3 text-left transition hover:border-rule-strong"
-        @click="router.push('/projetos')">
+      <button class="panel flex items-center gap-3 px-6 py-3 text-left transition hover:border-rule-strong"
+        @click="router.push('/projects')">
         <div>
-          <div class="text-[14px] font-semibold">Projetos</div>
+          <div class="text-[14px] font-semibold">Projects</div>
           <div class="text-[12px] text-fg-subtle">
-            {{ projetos.length }} {{ projetos.length === 1 ? 'projeto' : 'projetos' }} ·
-            criar, renomear, cor, código e arquivo ficam na tela de Projetos
+            {{ projects.length }} {{ projects.length === 1 ? 'project' : 'projects' }} ·
+            create, rename, color, code and archive live on the Projects screen
           </div>
         </div>
         <ArrowRight class="ml-auto h-4 w-4 flex-none text-fg-subtle" />
       </button>
 
-      <div class="painel">
-        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Vault de notas</span></div>
+      <div class="panel">
+        <div class="border-b border-rule px-6 py-2.5"><span class="label">Notes vault</span></div>
         <div class="space-y-3 px-6 py-3.5 text-[12px] text-fg-muted">
-          <p v-if="vaultAberto">
-            <code class="med break-all rounded bg-surface-2 px-1 py-0.5 text-[11px] text-fg">{{ vaultAberto }}</code>
-            <span class="ml-1">· {{ notas.length }} notas</span>
+          <p v-if="vaultPath">
+            <code class="mono break-all rounded bg-surface-2 px-1 py-0.5 text-[11px] text-fg">{{ vaultPath }}</code>
+            <span class="ml-1">· {{ notes.length }} notes</span>
           </p>
-          <p v-else>Nenhuma pasta aberta.</p>
+          <p v-else>No folder open.</p>
           <p class="leading-relaxed">
-            Os arquivos <code class="med">.md</code> são a verdade; o app guarda só um índice de
-            busca, que dá para jogar fora e refazer. Pode ser a mesma pasta do Obsidian.
+            The <code class="mono">.md</code> files are the source of truth; the app keeps only a search
+            index, which can be thrown away and rebuilt. It can be the same folder Obsidian uses.
           </p>
           <div class="flex gap-2">
-            <button class="btn" @click="trocaVault"><FolderOpen class="h-3.5 w-3.5" />{{ vaultAberto ? 'Trocar pasta' : 'Abrir pasta' }}</button>
-            <button v-if="vaultAberto" class="btn" :disabled="sincronizando" @click="reindexa">
-              <RefreshCw class="h-3.5 w-3.5" :class="sincronizando && 'animate-spin'" />Reindexar
+            <button class="btn" @click="changeVault"><FolderOpen class="h-3.5 w-3.5" />{{ vaultPath ? 'Change folder' : 'Open folder' }}</button>
+            <button v-if="vaultPath" class="btn" :disabled="syncing" @click="reindex">
+              <RefreshCw class="h-3.5 w-3.5" :class="syncing && 'animate-spin'" />Reindex
             </button>
           </div>
         </div>
       </div>
 
-      <AjustesPlugins />
+      <PluginSettings />
 
-      <div class="painel">
-        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Como o tempo é medido</span></div>
+      <div class="panel">
+        <div class="border-b border-rule px-6 py-2.5"><span class="label">How time is measured</span></div>
         <div class="space-y-2.5 px-6 py-3.5 text-[12px] leading-relaxed text-fg-muted">
           <p>
-            Mover um card para <b class="text-fg">Fazendo</b> abre uma sessão; tirar de lá fecha.
-            Não existe botão de cronômetro — o tempo é consequência do quadro.
+            Moving a card to <b class="text-fg">Doing</b> opens a session; moving it out closes it.
+            There is no timer button — time is a consequence of the board.
           </p>
           <p>
-            <b class="text-fg">Só uma sessão roda por vez</b>, garantido pelo banco. Começar uma
-            tarefa encerra a anterior, então é impossível contar a mesma hora duas vezes.
+            <b class="text-fg">Only one session runs at a time</b>, enforced by the database. Starting a
+            task stops the previous one, so the same hour can never be counted twice.
           </p>
           <p>
-            O tempo medido guarda o minuto cheio. O passo de {{ GRAO_MIN }} min existe só quando você
-            <b class="text-fg">corrige um horário à mão</b> em Hoje — medida não se arredonda,
-            estimativa sim.
+            Measured time keeps the whole minute. The {{ GRAIN_MIN }} min step only exists when you
+            <b class="text-fg">fix a time by hand</b> in Today — measurements aren't rounded,
+            estimates are.
           </p>
         </div>
       </div>
 
-      <div class="painel">
-        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Atalhos</span></div>
+      <div class="panel">
+        <div class="border-b border-rule px-6 py-2.5"><span class="label">Shortcuts</span></div>
         <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-6 py-3.5 text-[12px] text-fg-muted">
-          <span class="med text-fg">n</span><span>nova tarefa, de qualquer tela</span>
-          <span class="med text-fg">ctrl+k</span><span>buscar em notas, projetos e tarefas</span>
-          <span class="med text-fg">ctrl+p</span><span>comandos — do app e dos plugins</span>
-          <span class="med text-fg">ctrl+alt+n</span><span>nova nota</span>
-          <span class="med text-fg">1…7</span><span>navegar</span>
-          <span class="med text-fg">alt+1…7</span><span>navegar mesmo com o cursor num campo</span>
-          <span class="med text-fg">[[</span><span>link para outra nota, no editor</span>
-          <span class="med text-fg">#</span><span>projeto, na linha de captura</span>
-          <span class="med text-fg">!</span><span>prazo: <span class="med">hoje · qui · 12/09 · +3d</span></span>
-          <span class="med text-fg">@</span><span>tipo: <span class="med">reuniao · admin</span></span>
-          <span class="med text-fg">esc</span><span>fecha o que estiver aberto</span>
+          <span class="mono text-fg">n</span><span>new task, from any screen</span>
+          <span class="mono text-fg">ctrl+k</span><span>search notes, projects and tasks</span>
+          <span class="mono text-fg">ctrl+p</span><span>commands — from the app and plugins</span>
+          <span class="mono text-fg">ctrl+alt+n</span><span>new note</span>
+          <span class="mono text-fg">1…7</span><span>navigate</span>
+          <span class="mono text-fg">alt+1…7</span><span>navigate even with the cursor in a field</span>
+          <span class="mono text-fg">[[</span><span>link to another note, in the editor</span>
+          <span class="mono text-fg">#</span><span>project, in the capture line</span>
+          <span class="mono text-fg">!</span><span>due: <span class="mono">today · thu · 12/09 · +3d</span></span>
+          <span class="mono text-fg">@</span><span>type: <span class="mono">meeting · admin</span></span>
+          <span class="mono text-fg">esc</span><span>closes whatever is open</span>
         </div>
       </div>
 
-      <div class="painel">
-        <div class="border-b border-rule px-6 py-2.5"><span class="rot">Dados</span></div>
+      <div class="panel">
+        <div class="border-b border-rule px-6 py-2.5"><span class="label">Data</span></div>
         <div class="px-6 py-3.5 text-[12px] leading-relaxed text-fg-muted">
-          Um arquivo SQLite em
-          <code class="med rounded bg-surface-2 px-1 py-0.5 text-[11px]">%APPDATA%\com.lgili.bancada\</code>.
-          Backup é copiar o arquivo. Fuso: <span class="med">{{ tzAtual() }}</span>.
+          A SQLite file in
+          <code class="mono rounded bg-surface-2 px-1 py-0.5 text-[11px]">%APPDATA%\com.lgili.bancada\</code>.
+          Backup is copying the file. Time zone: <span class="mono">{{ currentTz() }}</span>.
         </div>
       </div>
     </div>
